@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect x="14" y="14" width="100" height="100" rx="22" fill="#0f172a" stroke="#f59e0b" stroke-width="6"/>
+  <path d="M34 42 H94 V54 H34 Z M34 60 H94 V72 H34 Z M34 78 H94 V90 H34 Z" fill="#f59e0b"/>
+  <circle cx="94" cy="34" r="7" fill="#34d399"/>
+  <title>agy-golden-stack</title>
+</svg>
