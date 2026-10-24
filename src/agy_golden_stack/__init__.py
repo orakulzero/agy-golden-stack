@@ -9,7 +9,7 @@ from agy_golden_stack.bus import (
 )
 from agy_golden_stack.consolidator import audit_and_consolidate_plugin_hooks
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "GoldenStackBus",

@@ -17,6 +17,32 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Set
 
+try:
+    from iso9000_agentops.diff_tour import (
+        drop_revealing_asks,
+        validate_diff_tour,
+        verify_git_reference,
+    )
+except ImportError:
+    import os
+    import sys
+
+    env_dir = os.environ.get("ISO9000_AGENTOPS_DIR")
+    candidates = [Path(env_dir).resolve()] if env_dir else []
+    candidates.extend([
+        Path.cwd().parent / "iso9000-agentops",
+        Path(__file__).resolve().parents[3] / "iso9000-agentops",
+    ])
+    for cand in candidates:
+        if cand.is_dir() and (cand / "iso9000_agentops").is_dir() and str(cand) not in sys.path:
+            sys.path.insert(0, str(cand))
+            break
+    from iso9000_agentops.diff_tour import (
+        drop_revealing_asks,
+        validate_diff_tour,
+        verify_git_reference,
+    )
+
 MAX_SAFE_JS_INT = 9007199254740991
 
 ALLOWED_PLUGIN_KEYS: Set[str] = {
@@ -200,6 +226,19 @@ def slot_p30_iso9000_gate(
                 "reason": f"Self-Grading Bias violation: locked test SHA-256 mismatch: {check['mismatches']}",
             }
 
+    tour = payload.get("diff_tour") or payload.get("tour_data")
+    if isinstance(tour, dict):
+        check_git = bool(payload.get("check_git", False))
+        git_ref = str(payload.get("git_ref", "HEAD"))
+        val_res = validate_diff_tour(tour, repo_root=workspace_root, check_git=check_git, git_ref=git_ref)
+        context["diff_tour_validation"] = val_res
+        if not val_res.get("valid"):
+            return {
+                "decision": "block",
+                "reason": "Diff-Tour validation failed: " + "; ".join(val_res.get("errors", [])),
+            }
+        context["sanitized_diff_tour"] = drop_revealing_asks(tour)
+
     return {"decision": "allow"}
 
 
@@ -317,4 +356,25 @@ def slot_p50_oss_release_gate(
                     "decision": "block",
                     "reason": "5-Gate OSS Release Audit failed: " + "; ".join(audit["errors"]),
                 }
+
+            root = Path(workspace_root).resolve()
+            tour_files: List[Path] = []
+            for pat in ("*.tour.json", ".diff-tour/*.json"):
+                tour_files.extend(root.glob(pat))
+            for tf in tour_files:
+                if tf.is_file():
+                    try:
+                        tour_data = json.loads(tf.read_text(encoding="utf-8"))
+                        if isinstance(tour_data, dict):
+                            val = validate_diff_tour(tour_data, repo_root=root, check_git=True, git_ref="HEAD")
+                            if not val.get("valid"):
+                                return {
+                                    "decision": "block",
+                                    "reason": f"Diff-Tour validation failed for '{tf.name}': " + "; ".join(val.get("errors", [])),
+                                }
+                    except Exception as e:
+                        return {
+                            "decision": "block",
+                            "reason": f"Diff-Tour invalid JSON in '{tf.name}': {e}",
+                        }
     return {"decision": "allow"}
