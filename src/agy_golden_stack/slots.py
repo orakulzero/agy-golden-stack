@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import time
@@ -178,13 +179,277 @@ def slot_p20_brain_memory(
     return {"decision": "allow"}
 
 
+def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate v1.2.0 peripheral station payload contracts.
+
+    Supports:
+    - pe_reversing_lab: syscall_stubs schema (name/symbol/ordinal, syscall_id/ssn, is_hooked/hooked).
+    - eskd_vision_station: gost_2308 (geometric tolerances), gost_2309 (roughness), gost_2316 (notes).
+    - agy_secret_shield: obfuscated_findings schema (encoding_type, decode_depth, rule_id, redacted_tag).
+    - agy_federation_mesh: retry_history (attempt_count) and load_balancer (replica metrics).
+    """
+    if not isinstance(payload, dict):
+        return {
+            "valid": False,
+            "checked_stations": [],
+            "violations": ["Payload must be a dictionary"],
+        }
+
+    violations: List[str] = []
+    checked_stations: Set[str] = set()
+
+    # 1. pe_reversing_lab
+    stubs = payload.get("syscall_stubs")
+    pe_data = None
+    if "pe_reversing_lab" in payload:
+        pe_data = payload.get("pe_reversing_lab")
+    elif "pe-reversing-lab" in payload:
+        pe_data = payload.get("pe-reversing-lab")
+
+    if pe_data is not None:
+        checked_stations.add("pe_reversing_lab")
+        if isinstance(pe_data, dict):
+            if stubs is None:
+                stubs = pe_data.get("syscall_stubs")
+            if stubs is None:
+                violations.append("pe_reversing_lab: payload missing required 'syscall_stubs' list")
+        else:
+            violations.append("pe_reversing_lab: station payload must be a dict")
+    elif stubs is not None:
+        checked_stations.add("pe_reversing_lab")
+
+    if stubs is not None:
+        if not isinstance(stubs, list):
+            violations.append("pe_reversing_lab: syscall_stubs must be a list")
+        else:
+            for idx, stub in enumerate(stubs):
+                if not isinstance(stub, dict):
+                    violations.append(f"pe_reversing_lab: syscall_stub at index {idx} must be a dict")
+                    continue
+                if not any(k in stub for k in ("name", "symbol", "ordinal")):
+                    violations.append(f"pe_reversing_lab: syscall_stub at index {idx} missing name, symbol, or ordinal")
+                if not any(k in stub for k in ("syscall_id", "ssn")):
+                    violations.append(f"pe_reversing_lab: syscall_stub at index {idx} missing syscall_id or ssn")
+                else:
+                    sid = stub.get("syscall_id") if "syscall_id" in stub else stub.get("ssn")
+                    if not isinstance(sid, int) or isinstance(sid, bool) or sid < 0:
+                        violations.append(f"pe_reversing_lab: syscall_stub at index {idx} syscall_id/ssn must be non-negative integer")
+                if not any(k in stub for k in ("is_hooked", "hooked")):
+                    violations.append(f"pe_reversing_lab: syscall_stub at index {idx} missing is_hooked or hooked flag")
+                else:
+                    hook = stub.get("is_hooked") if "is_hooked" in stub else stub.get("hooked")
+                    if not isinstance(hook, bool):
+                        violations.append(f"pe_reversing_lab: syscall_stub at index {idx} is_hooked/hooked must be a boolean")
+
+    # 2. eskd_vision_station
+    eskd_data = None
+    if "eskd_vision_station" in payload:
+        eskd_data = payload.get("eskd_vision_station")
+    elif "eskd-vision-station" in payload:
+        eskd_data = payload.get("eskd-vision-station")
+
+    gost_2308 = payload.get("gost_2308")
+    gost_2309 = payload.get("gost_2309")
+    gost_2316 = payload.get("gost_2316")
+
+    if eskd_data is not None:
+        checked_stations.add("eskd_vision_station")
+        if isinstance(eskd_data, dict):
+            gost_2308 = gost_2308 if gost_2308 is not None else eskd_data.get("gost_2308")
+            gost_2309 = gost_2309 if gost_2309 is not None else eskd_data.get("gost_2309")
+            gost_2316 = gost_2316 if gost_2316 is not None else eskd_data.get("gost_2316")
+            if gost_2308 is None and gost_2309 is None and gost_2316 is None:
+                violations.append("eskd_vision_station: payload must contain at least one of gost_2308, gost_2309, or gost_2316")
+        else:
+            violations.append("eskd_vision_station: station payload must be a dict")
+    elif any(g is not None for g in (gost_2308, gost_2309, gost_2316)):
+        checked_stations.add("eskd_vision_station")
+
+    if gost_2308 is not None:
+        frames = None
+        if isinstance(gost_2308, list):
+            frames = gost_2308
+        elif isinstance(gost_2308, dict):
+            if "frames" in gost_2308 and isinstance(gost_2308["frames"], list):
+                frames = gost_2308["frames"]
+            elif "tolerances" in gost_2308 and isinstance(gost_2308["tolerances"], list):
+                frames = gost_2308["tolerances"]
+            elif "characteristic" in gost_2308:
+                frames = [gost_2308]
+            else:
+                violations.append("eskd_vision_station: gost_2308 dict missing 'frames' or 'characteristic'")
+        else:
+            violations.append("eskd_vision_station: gost_2308 must be a list or dict")
+
+        if frames is not None:
+            for idx, frame in enumerate(frames):
+                if not isinstance(frame, dict):
+                    violations.append(f"eskd_vision_station: gost_2308 frame at index {idx} must be a dict")
+                    continue
+                if not frame.get("characteristic"):
+                    violations.append(f"eskd_vision_station: gost_2308 frame at index {idx} missing characteristic")
+                tol = frame.get("tolerance")
+                if tol is None or not isinstance(tol, (int, float)) or tol <= 0:
+                    violations.append(f"eskd_vision_station: gost_2308 frame at index {idx} tolerance must be positive number")
+
+    if gost_2309 is not None:
+        roughness_items = None
+        if isinstance(gost_2309, list):
+            roughness_items = gost_2309
+        elif isinstance(gost_2309, dict):
+            if "parameters" in gost_2309 and isinstance(gost_2309["parameters"], list):
+                roughness_items = gost_2309["parameters"]
+            elif any(k in gost_2309 for k in ("parameter", "value", "ra", "rz", "rmax")):
+                roughness_items = [gost_2309]
+            else:
+                violations.append("eskd_vision_station: gost_2309 dict missing roughness parameters or values")
+        else:
+            violations.append("eskd_vision_station: gost_2309 must be a list or dict")
+
+        if roughness_items is not None:
+            for idx, item in enumerate(roughness_items):
+                if not isinstance(item, dict):
+                    violations.append(f"eskd_vision_station: gost_2309 item at index {idx} must be a dict")
+                    continue
+                val = item.get("value")
+                if val is None:
+                    for k in ("ra", "rz", "rmax"):
+                        if k in item:
+                            val = item[k]
+                            break
+                if val is None or not isinstance(val, (int, float)) or val <= 0:
+                    violations.append(f"eskd_vision_station: gost_2309 item at index {idx} missing positive roughness value")
+
+    if gost_2316 is not None:
+        if isinstance(gost_2316, list):
+            for idx, req in enumerate(gost_2316):
+                if not isinstance(req, str) or not req.strip():
+                    violations.append(f"eskd_vision_station: gost_2316 requirement note at index {idx} must be non-empty string")
+        elif isinstance(gost_2316, dict):
+            has_items = "items" in gost_2316 and isinstance(gost_2316["items"], list)
+            has_text = "text" in gost_2316 and isinstance(gost_2316["text"], str)
+            has_bbox = "tech_req_bbox" in gost_2316
+            if not (has_items or has_text or has_bbox):
+                violations.append("eskd_vision_station: gost_2316 dict must contain 'items', 'text', or 'tech_req_bbox'")
+            if has_bbox:
+                bbox = gost_2316["tech_req_bbox"]
+                if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4 and all(isinstance(c, (int, float)) and 0.0 <= c <= 1.0 for c in bbox)):
+                    violations.append("eskd_vision_station: gost_2316 tech_req_bbox must be 4 coordinates in [0.0, 1.0]")
+        elif isinstance(gost_2316, str):
+            if not gost_2316.strip():
+                violations.append("eskd_vision_station: gost_2316 text cannot be empty")
+        else:
+            violations.append("eskd_vision_station: gost_2316 must be a list, dict, or string")
+
+    # 3. agy_secret_shield
+    shield_data = None
+    if "agy_secret_shield" in payload:
+        shield_data = payload.get("agy_secret_shield")
+    elif "agy-secret-shield" in payload:
+        shield_data = payload.get("agy-secret-shield")
+
+    findings = payload.get("obfuscated_findings")
+    if shield_data is not None:
+        checked_stations.add("agy_secret_shield")
+        if isinstance(shield_data, dict):
+            if findings is None:
+                findings = shield_data.get("obfuscated_findings")
+            if findings is None:
+                violations.append("agy_secret_shield: payload missing required 'obfuscated_findings' list")
+        else:
+            violations.append("agy_secret_shield: station payload must be a dict")
+    elif findings is not None:
+        checked_stations.add("agy_secret_shield")
+
+    if findings is not None:
+        if not isinstance(findings, list):
+            violations.append("agy_secret_shield: obfuscated_findings must be a list")
+        else:
+            for idx, item in enumerate(findings):
+                if not isinstance(item, dict):
+                    violations.append(f"agy_secret_shield: obfuscated_finding at index {idx} must be a dict")
+                    continue
+                enc = item.get("encoding_type")
+                if not isinstance(enc, str) or not enc.strip():
+                    violations.append(f"agy_secret_shield: item {idx} missing valid encoding_type")
+                depth = item.get("decode_depth")
+                if not isinstance(depth, int) or depth < 1:
+                    violations.append(f"agy_secret_shield: item {idx} decode_depth must be integer >= 1")
+                rule = item.get("rule_id")
+                if not isinstance(rule, str) or not rule.strip():
+                    violations.append(f"agy_secret_shield: item {idx} missing valid rule_id")
+                tag = item.get("redacted_tag")
+                if not isinstance(tag, str) or not tag.strip():
+                    violations.append(f"agy_secret_shield: item {idx} missing valid redacted_tag")
+
+    # 4. agy_federation_mesh
+    fed_data = None
+    if "agy_federation_mesh" in payload:
+        fed_data = payload.get("agy_federation_mesh")
+    elif "agy-federation-mesh" in payload:
+        fed_data = payload.get("agy-federation-mesh")
+
+    retries = payload.get("retry_history")
+    lb = payload.get("load_balancer")
+
+    if fed_data is not None:
+        checked_stations.add("agy_federation_mesh")
+        if isinstance(fed_data, dict):
+            retries = retries if retries is not None else fed_data.get("retry_history")
+            lb = lb if lb is not None else fed_data.get("load_balancer")
+            if retries is None and lb is None:
+                violations.append("agy_federation_mesh: payload must contain retry_history or load_balancer")
+        else:
+            violations.append("agy_federation_mesh: station payload must be a dict")
+    elif retries is not None or lb is not None:
+        checked_stations.add("agy_federation_mesh")
+
+    if retries is not None:
+        if not isinstance(retries, list):
+            violations.append("agy_federation_mesh: retry_history must be a list")
+        else:
+            for idx, item in enumerate(retries):
+                if not isinstance(item, dict):
+                    violations.append(f"agy_federation_mesh: retry item at index {idx} must be a dict")
+                    continue
+                att = item.get("attempt_count") if "attempt_count" in item else item.get("attempt")
+                if att is None or not isinstance(att, int) or isinstance(att, bool) or att < 0:
+                    violations.append(f"agy_federation_mesh: retry item at index {idx} must have non-negative integer attempt_count or attempt")
+                if "delay_ms" in item or "delay" in item:
+                    del_val = item.get("delay_ms") if "delay_ms" in item else item.get("delay")
+                    if (
+                        del_val is None
+                        or not isinstance(del_val, (int, float))
+                        or isinstance(del_val, bool)
+                        or (isinstance(del_val, float) and math.isnan(del_val))
+                        or del_val < 0
+                    ):
+                        violations.append(f"agy_federation_mesh: retry item at index {idx} delay must be non-negative number")
+
+    if lb is not None:
+        if not isinstance(lb, dict):
+            violations.append("agy_federation_mesh: load_balancer must be a dict")
+        else:
+            valid_keys = {"replicas", "latency_ema_ms", "weight", "status", "station_id", "inflight_count", "algorithm"}
+            if not any(k in lb for k in valid_keys):
+                violations.append("agy_federation_mesh: load_balancer missing replica metrics or 'replicas' list")
+            if "replicas" in lb and not isinstance(lb["replicas"], list):
+                violations.append("agy_federation_mesh: load_balancer replicas must be a list")
+
+    return {
+        "valid": len(violations) == 0,
+        "checked_stations": sorted(list(checked_stations)),
+        "violations": violations,
+    }
+
+
 def slot_p30_iso9000_gate(
     workspace_root: Path,
     event_name: str,
     payload: Dict[str, Any],
     context: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """P30: Enforce Agile V Self-Grading Bias role separation on PreToolUse file writes."""
+    """P30: Enforce Agile V Self-Grading Bias role separation and validate v1.2 station contracts."""
     if event_name == "PreToolUse":
         tool_name = str(payload.get("tool_name") or "").lower()
         role = str(payload.get("role") or "").lower().strip()
@@ -238,6 +503,17 @@ def slot_p30_iso9000_gate(
                 "reason": "Diff-Tour validation failed: " + "; ".join(val_res.get("errors", [])),
             }
         context["sanitized_diff_tour"] = drop_revealing_asks(tour)
+
+    station_check = verify_v1_2_station_contracts(payload)
+    if station_check["checked_stations"]:
+        context["station_contracts_verification"] = station_check
+        if not station_check["valid"]:
+            role = str(payload.get("role") or "").lower().strip()
+            if role in ("implementer", "build-agent", "station-agent") or bool(payload.get("enforce_station_contracts")):
+                return {
+                    "decision": "block",
+                    "reason": "Station contract violation: " + "; ".join(station_check["violations"]),
+                }
 
     return {"decision": "allow"}
 
@@ -342,7 +618,25 @@ def slot_p50_oss_release_gate(
     payload: Dict[str, Any],
     context: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """P50: Intercept `git push` or `gh release create` and enforce 5-Gate OSS Release Audit."""
+    """P50: Intercept `git push` or `gh release create` and enforce 5-Gate OSS Release Audit and station contracts."""
+    station_check = verify_v1_2_station_contracts(payload)
+    if station_check["checked_stations"]:
+        context["station_contracts_verification"] = station_check
+        if not station_check["valid"]:
+            cmd = str(payload.get("command") or "").lower()
+            tool_name = str(payload.get("tool_name") or "").lower()
+            is_push_or_release = (
+                (tool_name == "run_command" and any(k in cmd for k in ("git push", "gh release", "git tag")))
+                or event_name in ("PrePush", "ReleaseAudit", "PreRelease")
+                or bool(payload.get("is_release"))
+                or bool(payload.get("enforce_station_contracts"))
+            )
+            if is_push_or_release:
+                return {
+                    "decision": "block",
+                    "reason": "Station contract violation in release gate: " + "; ".join(station_check["violations"]),
+                }
+
     if event_name == "PreToolUse":
         tool_name = str(payload.get("tool_name") or "").lower()
         cmd = str(payload.get("command") or "")

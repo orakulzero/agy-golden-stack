@@ -47,6 +47,8 @@ class GoldenStackBus:
         )
         self.slots: List[SlotRegistration] = []
         self._active_depth = 0
+        self._telemetry_timings: Dict[str, List[float]] = {}
+        self._telemetry_counts: Dict[str, Dict[str, int]] = {}
 
         if register_defaults:
             self._register_default_slots()
@@ -111,6 +113,10 @@ class GoldenStackBus:
             )
         )
         self.slots.sort(key=lambda s: (s.priority, s.slot_id))
+        if slot_id not in self._telemetry_timings:
+            self._telemetry_timings[slot_id] = []
+        if slot_id not in self._telemetry_counts:
+            self._telemetry_counts[slot_id] = {"allow": 0, "block": 0}
 
     def dispatch(
         self,
@@ -153,7 +159,19 @@ class GoldenStackBus:
                 slot_timings_ms[slot.slot_id] = round(s_elapsed, 4)
                 executed_slots.append(slot.slot_id)
 
-                if res.get("decision") == "block":
+                sid = slot.slot_id
+                if sid not in self._telemetry_timings:
+                    self._telemetry_timings[sid] = []
+                    self._telemetry_counts[sid] = {"allow": 0, "block": 0}
+                self._telemetry_timings[sid].append(s_elapsed)
+
+                is_block = res.get("decision") == "block"
+                if is_block:
+                    self._telemetry_counts[sid]["block"] += 1
+                else:
+                    self._telemetry_counts[sid]["allow"] += 1
+
+                if is_block:
                     total_elapsed = (time.perf_counter() - t_start) * 1000.0
                     return {
                         "ok": True,
@@ -185,6 +203,58 @@ class GoldenStackBus:
             }
         finally:
             self._active_depth -= 1
+
+    def get_telemetry_summary(self) -> Dict[str, Dict[str, Any]]:
+        """Compute per-slot SLA telemetry summary including min, avg, p50, p95, max ms and counts."""
+        summary: Dict[str, Dict[str, Any]] = {}
+        for slot in self.slots:
+            sid = slot.slot_id
+            timings = self._telemetry_timings.get(sid, [])
+            counts = self._telemetry_counts.get(sid, {"allow": 0, "block": 0})
+            n = len(timings)
+            if n == 0:
+                summary[sid] = {
+                    "count": 0,
+                    "min_ms": 0.0,
+                    "avg_ms": 0.0,
+                    "p50_ms": 0.0,
+                    "p95_ms": 0.0,
+                    "max_ms": 0.0,
+                    "allow_count": counts.get("allow", 0),
+                    "block_count": counts.get("block", 0),
+                }
+            else:
+                sorted_t = sorted(timings)
+                summary[sid] = {
+                    "count": n,
+                    "min_ms": round(sorted_t[0], 4),
+                    "avg_ms": round(sum(sorted_t) / n, 4),
+                    "p50_ms": round(_compute_percentile(sorted_t, 50.0), 4),
+                    "p95_ms": round(_compute_percentile(sorted_t, 95.0), 4),
+                    "max_ms": round(sorted_t[-1], 4),
+                    "allow_count": counts.get("allow", 0),
+                    "block_count": counts.get("block", 0),
+                }
+        return summary
+
+    def reset_telemetry(self) -> None:
+        """Reset all in-memory telemetry timing lists and allow/block counters to empty/zero."""
+        for sid in list(self._telemetry_timings.keys()):
+            self._telemetry_timings[sid] = []
+        for sid in list(self._telemetry_counts.keys()):
+            self._telemetry_counts[sid] = {"allow": 0, "block": 0}
+
+
+def _compute_percentile(sorted_vals: List[float], p: float) -> float:
+    if not sorted_vals:
+        return 0.0
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    k = (len(sorted_vals) - 1) * (p / 100.0)
+    f = int(k)
+    c = min(f + 1, len(sorted_vals) - 1)
+    d = k - f
+    return sorted_vals[f] * (1.0 - d) + sorted_vals[c] * d
 
 
 __all__ = ["GoldenStackBus", "SlotRegistration", "verify_locked_test_hashes"]
