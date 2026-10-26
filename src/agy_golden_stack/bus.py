@@ -6,6 +6,8 @@ Deterministic Single-Process In-Memory Execution Bus (`GoldenStackBus`) for P10.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -49,6 +51,8 @@ class GoldenStackBus:
         self._active_depth = 0
         self._telemetry_timings: Dict[str, List[float]] = {}
         self._telemetry_counts: Dict[str, Dict[str, int]] = {}
+        self._execution_window: List[Dict[str, Any]] = []
+        self._dispatched_events: List[bytes] = []
 
         if register_defaults:
             self._register_default_slots()
@@ -173,6 +177,7 @@ class GoldenStackBus:
 
                 if is_block:
                     total_elapsed = (time.perf_counter() - t_start) * 1000.0
+                    self._record_dispatch(event_name, pl, slot_errors)
                     return {
                         "ok": True,
                         "decision": "block",
@@ -188,6 +193,7 @@ class GoldenStackBus:
                     }
 
             total_elapsed = (time.perf_counter() - t_start) * 1000.0
+            self._record_dispatch(event_name, pl, slot_errors)
             return {
                 "ok": True,
                 "decision": "allow",
@@ -243,6 +249,98 @@ class GoldenStackBus:
             self._telemetry_timings[sid] = []
         for sid in list(self._telemetry_counts.keys()):
             self._telemetry_counts[sid] = {"allow": 0, "block": 0}
+
+    def _record_dispatch(
+        self,
+        event_name: str,
+        payload: Dict[str, Any],
+        slot_errors: Dict[str, str],
+    ) -> None:
+        is_error = len(slot_errors) > 0
+        self._execution_window.append({
+            "success": not is_error,
+            "errors": list(slot_errors.keys()),
+            "timestamp": time.time(),
+        })
+        try:
+            event_entry = {
+                "event": event_name,
+                "payload": payload,
+            }
+            canonical_bytes = json.dumps(
+                event_entry, sort_keys=True, separators=(",", ":"), default=str
+            ).encode("utf-8")
+        except Exception:
+            canonical_bytes = f"{event_name}:{str(payload)}".encode("utf-8")
+        self._dispatched_events.append(canonical_bytes)
+
+    def get_circuit_breaker_health(self, window_size: int = 100) -> Dict[str, Any]:
+        """Compute sliding-window circuit breaker health across recent dispatches."""
+        window = self._execution_window[-window_size:] if window_size > 0 else self._execution_window
+        total = len(window)
+        if total == 0:
+            return {
+                "state": "CLOSED",
+                "is_tripped": False,
+                "failure_rate": 0.0,
+                "total_recorded": 0,
+                "failure_count": 0,
+                "window_size": window_size,
+            }
+        failures = sum(1 for rec in window if not rec.get("success", True))
+        failure_rate = round(failures / total, 4)
+        is_tripped = failure_rate >= 0.5
+        state = "OPEN" if is_tripped else "CLOSED"
+        return {
+            "state": state,
+            "is_tripped": is_tripped,
+            "failure_rate": failure_rate,
+            "total_recorded": total,
+            "failure_count": failures,
+            "window_size": window_size,
+        }
+
+    def compute_bus_merkle_digest(self) -> Dict[str, Any]:
+        """Compute deterministic RFC 6962 binary Merkle root over all dispatched events."""
+        tree = _build_bus_merkle_tree(self._dispatched_events)
+        return {
+            "merkle_root": tree["root"],
+            "root": tree["root"],
+            "entry_count": len(self._dispatched_events),
+            "tree": tree,
+        }
+
+
+def _build_bus_merkle_tree(leaf_payloads: List[bytes]) -> Dict[str, Any]:
+    if not leaf_payloads:
+        return {
+            "root": "",
+            "levels": [],
+            "leaf_count": 0,
+        }
+    current_level: List[str] = [
+        hashlib.sha256(b"\x00" + bytes(p)).hexdigest()
+        for p in leaf_payloads
+    ]
+    levels: List[List[str]] = [list(current_level)]
+    while len(current_level) > 1:
+        if len(current_level) % 2 == 1:
+            paired = list(current_level) + [current_level[-1]]
+        else:
+            paired = current_level
+        next_level: List[str] = []
+        for i in range(0, len(paired), 2):
+            left = bytes.fromhex(paired[i])
+            right = bytes.fromhex(paired[i + 1])
+            parent = hashlib.sha256(b"\x01" + left + right).hexdigest()
+            next_level.append(parent)
+        levels.append(next_level)
+        current_level = next_level
+    return {
+        "root": current_level[0],
+        "levels": levels,
+        "leaf_count": len(leaf_payloads),
+    }
 
 
 def _compute_percentile(sorted_vals: List[float], p: float) -> float:

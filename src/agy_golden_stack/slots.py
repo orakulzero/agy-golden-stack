@@ -443,6 +443,217 @@ def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate v1.3.0 peripheral station payload contracts.
+
+    Supports:
+    - pe_reversing_lab: imphash (32-character hexadecimal MD5), rich_header (dan_s_present bool, entries list),
+      cfg_summary (block_count >= 1, cyclomatic_complexity >= 1).
+    - agy_secret_shield: ast_taint_findings (category in {"live_assignment", "taint_concatenation", "env_fallback", "api_client_arg"},
+      line_number >= 1, confidence in {"HIGH", "MEDIUM", "LOW"}).
+    - eskd_vision_station: vector_line_weights (main_stroke_mm in [0.5, 1.4], thin_stroke_mm > 0, ratio in [0.3, 0.55]),
+      gost_2106_bom (7 standard columns, rows with pos >= 1).
+    - agy_federation_mesh: pareto_frontier (worker_id, latency_p50 > 0, cost >= 0, reliability in [0.0, 1.0]).
+    """
+    if not isinstance(payload, dict):
+        return {
+            "valid": False,
+            "checked_stations": [],
+            "violations": ["Payload must be a dictionary"],
+        }
+
+    violations: List[str] = []
+    checked_stations: Set[str] = set()
+
+    # 1. pe_reversing_lab
+    pe_data = None
+    if "pe_reversing_lab" in payload:
+        pe_data = payload.get("pe_reversing_lab")
+    elif "pe-reversing-lab" in payload:
+        pe_data = payload.get("pe-reversing-lab")
+    elif any(k in payload for k in ("imphash", "rich_header", "cfg_summary")):
+        pe_data = payload
+
+    if pe_data is not None:
+        checked_stations.add("pe_reversing_lab")
+        if not isinstance(pe_data, dict):
+            violations.append("pe_reversing_lab: station payload must be a dict")
+        else:
+            imphash = pe_data.get("imphash")
+            rich_header = pe_data.get("rich_header")
+            cfg_summary = pe_data.get("cfg_summary") if "cfg_summary" in pe_data else pe_data.get("basic_blocks")
+
+            if imphash is None and rich_header is None and cfg_summary is None:
+                if "syscall_stubs" in pe_data:
+                    checked_stations.discard("pe_reversing_lab")
+                else:
+                    violations.append("pe_reversing_lab: payload missing required v1.3.0 telemetry (imphash, rich_header, cfg_summary)")
+
+            if imphash is not None:
+                if not (isinstance(imphash, str) and len(imphash) == 32 and all(c in "0123456789abcdefABCDEF" for c in imphash)):
+                    violations.append("pe_reversing_lab: imphash must be a 32-character hexadecimal MD5 hash")
+
+            if rich_header is not None:
+                if not isinstance(rich_header, dict):
+                    violations.append("pe_reversing_lab: rich_header must be a dict")
+                else:
+                    if "dan_s_present" in rich_header and not isinstance(rich_header["dan_s_present"], bool):
+                        violations.append("pe_reversing_lab: rich_header dan_s_present must be a boolean")
+                    if "entries" in rich_header and not isinstance(rich_header["entries"], list):
+                        violations.append("pe_reversing_lab: rich_header entries must be a list")
+
+            if cfg_summary is not None:
+                if not isinstance(cfg_summary, dict):
+                    violations.append("pe_reversing_lab: cfg_summary must be a dict")
+                else:
+                    bc = cfg_summary.get("block_count")
+                    if bc is None or not isinstance(bc, int) or isinstance(bc, bool) or bc < 1:
+                        violations.append("pe_reversing_lab: cfg_summary block_count must be integer >= 1")
+                    cc = cfg_summary.get("cyclomatic_complexity")
+                    if cc is None or not isinstance(cc, int) or isinstance(cc, bool) or cc < 1:
+                        violations.append("pe_reversing_lab: cfg_summary cyclomatic_complexity must be integer >= 1")
+
+    # 2. agy_secret_shield
+    shield_data = None
+    if "agy_secret_shield" in payload:
+        shield_data = payload.get("agy_secret_shield")
+    elif "agy-secret-shield" in payload:
+        shield_data = payload.get("agy-secret-shield")
+    elif any(k in payload for k in ("ast_taint_findings", "ast_secrets")):
+        shield_data = payload
+
+    if shield_data is not None:
+        checked_stations.add("agy_secret_shield")
+        if not isinstance(shield_data, dict):
+            violations.append("agy_secret_shield: station payload must be a dict")
+        else:
+            findings = shield_data.get("ast_taint_findings") if "ast_taint_findings" in shield_data else shield_data.get("ast_secrets")
+            if findings is None:
+                if "obfuscated_findings" in shield_data:
+                    checked_stations.discard("agy_secret_shield")
+                else:
+                    violations.append("agy_secret_shield: payload missing required 'ast_taint_findings' list")
+            elif not isinstance(findings, list):
+                violations.append("agy_secret_shield: ast_taint_findings must be a list")
+            else:
+                valid_cats = {"live_assignment", "taint_concatenation", "env_fallback", "api_client_arg"}
+                valid_confs = {"HIGH", "MEDIUM", "LOW"}
+                for idx, item in enumerate(findings):
+                    if not isinstance(item, dict):
+                        violations.append(f"agy_secret_shield: finding at index {idx} must be a dict")
+                        continue
+                    cat = item.get("category")
+                    if cat not in valid_cats:
+                        violations.append(f"agy_secret_shield: finding at index {idx} invalid category '{cat}'")
+                    lineno = item.get("line_number")
+                    if lineno is None or not isinstance(lineno, int) or isinstance(lineno, bool) or lineno < 1:
+                        violations.append(f"agy_secret_shield: finding at index {idx} line_number must be integer >= 1")
+                    conf = item.get("confidence")
+                    if conf not in valid_confs:
+                        violations.append(f"agy_secret_shield: finding at index {idx} invalid confidence '{conf}'")
+
+    # 3. eskd_vision_station
+    eskd_data = None
+    if "eskd_vision_station" in payload:
+        eskd_data = payload.get("eskd_vision_station")
+    elif "eskd-vision-station" in payload:
+        eskd_data = payload.get("eskd-vision-station")
+    elif any(k in payload for k in ("vector_line_weights", "gost_2106_bom")):
+        eskd_data = payload
+
+    if eskd_data is not None:
+        checked_stations.add("eskd_vision_station")
+        if not isinstance(eskd_data, dict):
+            violations.append("eskd_vision_station: station payload must be a dict")
+        else:
+            weights = eskd_data.get("vector_line_weights")
+            bom = eskd_data.get("gost_2106_bom")
+            if weights is None and bom is None:
+                if any(k in eskd_data for k in ("gost_2308", "gost_2309", "gost_2316")):
+                    checked_stations.discard("eskd_vision_station")
+                else:
+                    violations.append("eskd_vision_station: payload missing required vector_line_weights or gost_2106_bom")
+
+            if weights is not None:
+                if not isinstance(weights, dict):
+                    violations.append("eskd_vision_station: vector_line_weights must be a dict")
+                else:
+                    main_s = weights.get("main_stroke_mm")
+                    if main_s is None or not isinstance(main_s, (int, float)) or isinstance(main_s, bool) or not (0.5 <= main_s <= 1.4):
+                        violations.append("eskd_vision_station: vector_line_weights main_stroke_mm must be in range [0.5, 1.4]")
+                    thin_s = weights.get("thin_stroke_mm")
+                    if thin_s is None or not isinstance(thin_s, (int, float)) or isinstance(thin_s, bool) or thin_s <= 0:
+                        violations.append("eskd_vision_station: vector_line_weights thin_stroke_mm must be positive number")
+                    ratio = weights.get("ratio")
+                    if ratio is None or not isinstance(ratio, (int, float)) or isinstance(ratio, bool) or not (0.3 <= ratio <= 0.55):
+                        violations.append("eskd_vision_station: vector_line_weights ratio must be in range [0.3, 0.55]")
+
+            if bom is not None:
+                if not isinstance(bom, dict):
+                    violations.append("eskd_vision_station: gost_2106_bom must be a dict")
+                else:
+                    cols = bom.get("columns")
+                    if not isinstance(cols, list) or len(cols) != 7:
+                        violations.append("eskd_vision_station: gost_2106_bom must contain exactly 7 standard columns")
+                    rows = bom.get("rows")
+                    if not isinstance(rows, list):
+                        violations.append("eskd_vision_station: gost_2106_bom rows must be a list")
+                    else:
+                        for idx, row in enumerate(rows):
+                            if not isinstance(row, dict):
+                                violations.append(f"eskd_vision_station: BOM row at index {idx} must be a dict")
+                            else:
+                                pos = row.get("pos")
+                                if pos is not None and (not isinstance(pos, int) or isinstance(pos, bool) or pos < 1):
+                                    violations.append(f"eskd_vision_station: BOM row at index {idx} pos must be integer >= 1")
+
+    # 4. agy_federation_mesh
+    fed_data = None
+    if "agy_federation_mesh" in payload:
+        fed_data = payload.get("agy_federation_mesh")
+    elif "agy-federation-mesh" in payload:
+        fed_data = payload.get("agy-federation-mesh")
+    elif "pareto_frontier" in payload:
+        fed_data = payload
+
+    if fed_data is not None:
+        checked_stations.add("agy_federation_mesh")
+        if not isinstance(fed_data, dict):
+            violations.append("agy_federation_mesh: station payload must be a dict")
+        else:
+            pareto = fed_data.get("pareto_frontier")
+            if pareto is None:
+                if "retry_history" in fed_data or "load_balancer" in fed_data or "attempt_count" in fed_data:
+                    checked_stations.discard("agy_federation_mesh")
+                else:
+                    violations.append("agy_federation_mesh: payload missing required pareto_frontier list")
+            elif not isinstance(pareto, list):
+                violations.append("agy_federation_mesh: pareto_frontier must be a list")
+            else:
+                for idx, worker in enumerate(pareto):
+                    if not isinstance(worker, dict):
+                        violations.append(f"agy_federation_mesh: pareto worker at index {idx} must be a dict")
+                        continue
+                    wid = worker.get("worker_id")
+                    if not isinstance(wid, str) or not wid.strip():
+                        violations.append(f"agy_federation_mesh: pareto worker at index {idx} missing valid worker_id")
+                    lat = worker.get("latency_p50")
+                    if lat is None or not isinstance(lat, (int, float)) or isinstance(lat, bool) or lat <= 0:
+                        violations.append(f"agy_federation_mesh: pareto worker at index {idx} latency_p50 must be positive float")
+                    cost = worker.get("cost")
+                    if cost is None or not isinstance(cost, (int, float)) or isinstance(cost, bool) or cost < 0:
+                        violations.append(f"agy_federation_mesh: pareto worker at index {idx} cost must be non-negative float")
+                    rel = worker.get("reliability")
+                    if rel is None or not isinstance(rel, (int, float)) or isinstance(rel, bool) or not (0.0 <= rel <= 1.0):
+                        violations.append(f"agy_federation_mesh: pareto worker at index {idx} reliability must be in range [0.0, 1.0]")
+
+    return {
+        "valid": len(violations) == 0,
+        "checked_stations": sorted(list(checked_stations)),
+        "violations": violations,
+    }
+
+
 def slot_p30_iso9000_gate(
     workspace_root: Path,
     event_name: str,
@@ -513,6 +724,17 @@ def slot_p30_iso9000_gate(
                 return {
                     "decision": "block",
                     "reason": "Station contract violation: " + "; ".join(station_check["violations"]),
+                }
+
+    station_check_v13 = verify_v1_3_station_contracts(payload)
+    if station_check_v13["checked_stations"]:
+        context["station_v1_3_contracts_verification"] = station_check_v13
+        if not station_check_v13["valid"]:
+            role = str(payload.get("role") or "").lower().strip()
+            if role in ("implementer", "build-agent", "station-agent") or bool(payload.get("enforce_station_contracts")):
+                return {
+                    "decision": "block",
+                    "reason": "v1.3.0 Station contract violation: " + "; ".join(station_check_v13["violations"]),
                 }
 
     return {"decision": "allow"}
@@ -635,6 +857,24 @@ def slot_p50_oss_release_gate(
                 return {
                     "decision": "block",
                     "reason": "Station contract violation in release gate: " + "; ".join(station_check["violations"]),
+                }
+
+    station_check_v13 = verify_v1_3_station_contracts(payload)
+    if station_check_v13["checked_stations"]:
+        context["station_v1_3_contracts_release_verification"] = station_check_v13
+        if not station_check_v13["valid"]:
+            cmd = str(payload.get("command") or "").lower()
+            tool_name = str(payload.get("tool_name") or "").lower()
+            is_push_or_release = (
+                (tool_name == "run_command" and any(k in cmd for k in ("git push", "gh release", "git tag")))
+                or event_name in ("PrePush", "ReleaseAudit", "PreRelease")
+                or bool(payload.get("is_release"))
+                or bool(payload.get("enforce_station_contracts"))
+            )
+            if is_push_or_release:
+                return {
+                    "decision": "block",
+                    "reason": "v1.3.0 Station contract violation in release gate: " + "; ".join(station_check_v13["violations"]),
                 }
 
     if event_name == "PreToolUse":
