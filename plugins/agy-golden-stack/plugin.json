@@ -2,7 +2,7 @@
   "name": "agy-golden-stack",
   "displayName": "AGY Golden Stack Unified Bus",
   "description": "Unified in-process P10..P50 AgentOps and Hook Multiplexer Bus integrating Runtime Doctor, Brain Memory, ISO 9001 Self-Grading Bias Gate, LSRPC Plugin Validator, and 5-Gate OSS Release Auditor.",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [
     "Run Golden Stack P10..P50 status and latency benchmark",

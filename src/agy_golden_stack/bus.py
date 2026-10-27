@@ -13,12 +13,14 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from agy_golden_stack.slots import (
+    inspect_computer_use_bus_event,
     slot_p10_runtime_doctor,
     slot_p20_brain_memory,
     slot_p30_iso9000_gate,
     slot_p40_lsrpc_plugin,
     slot_p50_oss_release_gate,
     verify_locked_test_hashes,
+    verify_v2_0_station_contracts,
 )
 
 SlotHandler = Callable[[str, Dict[str, Any], Dict[str, Any]], Dict[str, Any]]
@@ -152,6 +154,29 @@ class GoldenStackBus:
         t_start = time.perf_counter()
         self._active_depth += 1
         try:
+            if event_name.startswith("ComputerUse") or (event_name == "PreToolUse" and str(pl.get("tool_name", "")).startswith("cu_")):
+                cua_res = inspect_computer_use_bus_event(event_name, pl, context)
+                context["cua_safety_inspection"] = cua_res
+                if not cua_res.get("allowed", True):
+                    total_elapsed = (time.perf_counter() - t_start) * 1000.0
+                    self._record_dispatch(event_name, pl, slot_errors)
+                    return {
+                        "ok": False,
+                        "decision": "block",
+                        "event": event_name,
+                        "reentrant_short_circuit": False,
+                        "executed_slots": executed_slots,
+                        "slot_timings_ms": slot_timings_ms,
+                        "slot_errors": slot_errors,
+                        "total_duration_ms": round(total_elapsed, 4),
+                        "blocked_by": "CUA_SAFETY_INTERCEPTOR",
+                        "reason": cua_res.get("reason"),
+                        "safety_flags": cua_res.get("safety_flags", []),
+                        "context": context,
+                    }
+                if cua_res.get("sanitized_payload"):
+                    pl = cua_res["sanitized_payload"]
+
             for slot in self.slots:
                 s_start = time.perf_counter()
                 try:
@@ -355,4 +380,10 @@ def _compute_percentile(sorted_vals: List[float], p: float) -> float:
     return sorted_vals[f] * (1.0 - d) + sorted_vals[c] * d
 
 
-__all__ = ["GoldenStackBus", "SlotRegistration", "verify_locked_test_hashes"]
+__all__ = [
+    "GoldenStackBus",
+    "SlotRegistration",
+    "inspect_computer_use_bus_event",
+    "verify_locked_test_hashes",
+    "verify_v2_0_station_contracts",
+]

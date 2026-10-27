@@ -10,13 +10,14 @@ In-process priority slots P10..P50 for GoldenStackBus:
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
 from pathlib import Path
 import re
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 try:
     from iso9000_agentops.diff_tour import (
@@ -212,7 +213,10 @@ def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             if stubs is None:
                 stubs = pe_data.get("syscall_stubs")
             if stubs is None:
-                violations.append("pe_reversing_lab: payload missing required 'syscall_stubs' list")
+                if any(k in pe_data for k in ("imphash", "rich_header", "cfg_summary", "security_and_unwind")):
+                    checked_stations.discard("pe_reversing_lab")
+                else:
+                    violations.append("pe_reversing_lab: payload missing required 'syscall_stubs' list")
         else:
             violations.append("pe_reversing_lab: station payload must be a dict")
     elif stubs is not None:
@@ -259,7 +263,10 @@ def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             gost_2309 = gost_2309 if gost_2309 is not None else eskd_data.get("gost_2309")
             gost_2316 = gost_2316 if gost_2316 is not None else eskd_data.get("gost_2316")
             if gost_2308 is None and gost_2309 is None and gost_2316 is None:
-                violations.append("eskd_vision_station: payload must contain at least one of gost_2308, gost_2309, or gost_2316")
+                if any(k in eskd_data for k in ("vector_line_weights", "gost_2106_bom", "gost_2307_dimensions", "gost_2302_scale")):
+                    checked_stations.discard("eskd_vision_station")
+                else:
+                    violations.append("eskd_vision_station: payload must contain at least one of gost_2308, gost_2309, or gost_2316")
         else:
             violations.append("eskd_vision_station: station payload must be a dict")
     elif any(g is not None for g in (gost_2308, gost_2309, gost_2316)):
@@ -355,7 +362,10 @@ def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             if findings is None:
                 findings = shield_data.get("obfuscated_findings")
             if findings is None:
-                violations.append("agy_secret_shield: payload missing required 'obfuscated_findings' list")
+                if any(k in shield_data for k in ("ast_taint_findings", "ast_secrets", "secret_scan_sarif")):
+                    checked_stations.discard("agy_secret_shield")
+                else:
+                    violations.append("agy_secret_shield: payload missing required 'obfuscated_findings' list")
         else:
             violations.append("agy_secret_shield: station payload must be a dict")
     elif findings is not None:
@@ -398,7 +408,10 @@ def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             retries = retries if retries is not None else fed_data.get("retry_history")
             lb = lb if lb is not None else fed_data.get("load_balancer")
             if retries is None and lb is None:
-                violations.append("agy_federation_mesh: payload must contain retry_history or load_balancer")
+                if any(k in fed_data for k in ("pareto_frontier", "byzantine_quorum_consensus", "work_stealing_scheduler")):
+                    checked_stations.discard("agy_federation_mesh")
+                else:
+                    violations.append("agy_federation_mesh: payload must contain retry_history or load_balancer")
         else:
             violations.append("agy_federation_mesh: station payload must be a dict")
     elif retries is not None or lb is not None:
@@ -484,7 +497,7 @@ def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             cfg_summary = pe_data.get("cfg_summary") if "cfg_summary" in pe_data else pe_data.get("basic_blocks")
 
             if imphash is None and rich_header is None and cfg_summary is None:
-                if "syscall_stubs" in pe_data:
+                if any(k in pe_data for k in ("syscall_stubs", "security_and_unwind")):
                     checked_stations.discard("pe_reversing_lab")
                 else:
                     violations.append("pe_reversing_lab: payload missing required v1.3.0 telemetry (imphash, rich_header, cfg_summary)")
@@ -529,7 +542,7 @@ def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
         else:
             findings = shield_data.get("ast_taint_findings") if "ast_taint_findings" in shield_data else shield_data.get("ast_secrets")
             if findings is None:
-                if "obfuscated_findings" in shield_data:
+                if any(k in shield_data for k in ("obfuscated_findings", "secret_scan_sarif")):
                     checked_stations.discard("agy_secret_shield")
                 else:
                     violations.append("agy_secret_shield: payload missing required 'ast_taint_findings' list")
@@ -569,7 +582,7 @@ def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             weights = eskd_data.get("vector_line_weights")
             bom = eskd_data.get("gost_2106_bom")
             if weights is None and bom is None:
-                if any(k in eskd_data for k in ("gost_2308", "gost_2309", "gost_2316")):
+                if any(k in eskd_data for k in ("gost_2308", "gost_2309", "gost_2316", "gost_2307_dimensions", "gost_2302_scale")):
                     checked_stations.discard("eskd_vision_station")
                 else:
                     violations.append("eskd_vision_station: payload missing required vector_line_weights or gost_2106_bom")
@@ -623,7 +636,7 @@ def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
         else:
             pareto = fed_data.get("pareto_frontier")
             if pareto is None:
-                if "retry_history" in fed_data or "load_balancer" in fed_data or "attempt_count" in fed_data:
+                if any(k in fed_data for k in ("retry_history", "load_balancer", "attempt_count", "byzantine_quorum_consensus", "work_stealing_scheduler")):
                     checked_stations.discard("agy_federation_mesh")
                 else:
                     violations.append("agy_federation_mesh: payload missing required pareto_frontier list")
@@ -646,6 +659,276 @@ def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
                     rel = worker.get("reliability")
                     if rel is None or not isinstance(rel, (int, float)) or isinstance(rel, bool) or not (0.0 <= rel <= 1.0):
                         violations.append(f"agy_federation_mesh: pareto worker at index {idx} reliability must be in range [0.0, 1.0]")
+
+    return {
+        "valid": len(violations) == 0,
+        "checked_stations": sorted(list(checked_stations)),
+        "violations": violations,
+    }
+
+
+def inspect_computer_use_bus_event(
+    event_type: str,
+    payload: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Inspect computer-use action and event payloads for visual safety, bounds, and prompt injection (REQ-GS-201)."""
+    if not isinstance(payload, dict):
+        return {
+            "allowed": False,
+            "decision": "block",
+            "reason": "Payload must be a dictionary",
+            "safety_flags": ["INVALID_PAYLOAD"],
+            "sanitized_payload": None,
+        }
+
+    safety_flags: List[str] = []
+    reasons: List[str] = []
+    sanitized = copy.deepcopy(payload)
+
+    # 1. Coordinate Boundary Enforcement
+    coords_to_check: List[Tuple[str, float]] = []
+    if "norm_x" in payload and isinstance(payload["norm_x"], (int, float)) and not isinstance(payload["norm_x"], bool):
+        coords_to_check.append(("norm_x", float(payload["norm_x"])))
+    if "norm_y" in payload and isinstance(payload["norm_y"], (int, float)) and not isinstance(payload["norm_y"], bool):
+        coords_to_check.append(("norm_y", float(payload["norm_y"])))
+
+    for k in ("coordinates", "point", "coords"):
+        val = payload.get(k)
+        if isinstance(val, (list, tuple)) and len(val) >= 2:
+            if isinstance(val[0], (int, float)) and not isinstance(val[0], bool):
+                coords_to_check.append((f"{k}[0]", float(val[0])))
+            if isinstance(val[1], (int, float)) and not isinstance(val[1], bool):
+                coords_to_check.append((f"{k}[1]", float(val[1])))
+
+    for name, c in coords_to_check:
+        if c < 0.0 or c > 1000.0:
+            safety_flags.append("OUT_OF_BOUNDS")
+            reasons.append(f"Coordinate {name}={c} out of bounds [0, 1000]")
+            break
+
+    # 2. Prompt-Injection Sanitization & Zero-width detection
+    zero_width_chars = ["\u200b", "\u200c", "\u200d", "\ufeff", "\u202a", "\u202e"]
+    injection_patterns = [
+        re.compile(r"ignore\s+(?:all\s+)?(?:previous\s+)?instructions", re.IGNORECASE),
+        re.compile(r"system\s+override", re.IGNORECASE),
+        re.compile(r"eval\s*\(", re.IGNORECASE),
+        re.compile(r"execute_arbitrary", re.IGNORECASE),
+        re.compile(r"disable\s+visual\s+safety", re.IGNORECASE),
+    ]
+
+    def _scan_and_sanitize(obj: Any) -> Any:
+        if isinstance(obj, str):
+            for pat in injection_patterns:
+                if pat.search(obj):
+                    if "PROMPT_INJECTION" not in safety_flags:
+                        safety_flags.append("PROMPT_INJECTION")
+                    reasons.append(f"Prompt injection pattern detected: '{pat.pattern}'")
+                    break
+
+            cleaned = obj
+            has_zw = any(zw in cleaned for zw in zero_width_chars)
+            if has_zw:
+                for zw in zero_width_chars:
+                    cleaned = cleaned.replace(zw, "")
+                if any(k in cleaned.lower() for k in ("execute", "shell", "secret", "override", "system")):
+                    if "PROMPT_INJECTION" not in safety_flags:
+                        safety_flags.append("PROMPT_INJECTION")
+                    reasons.append("Zero-width hidden command detected")
+                return cleaned
+            return obj
+        elif isinstance(obj, dict):
+            return {k: _scan_and_sanitize(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_scan_and_sanitize(item) for item in obj]
+        return obj
+
+    sanitized = _scan_and_sanitize(sanitized)
+
+    # 3. Visual Oracle Gate
+    action = str(payload.get("action") or payload.get("action_type") or "").lower()
+    mutating_actions = {"click", "double_click", "triple_click", "middle_click", "right_click", "press", "key", "type", "drag", "write"}
+    receipt = payload.get("visual_change_receipt") or payload.get("visual_receipt")
+    if action in mutating_actions and receipt is None:
+        safety_flags.append("MISSING_VISUAL_ORACLE")
+
+    allowed = len(reasons) == 0
+    decision = "allow" if allowed else "block"
+    reason = "; ".join(reasons) if reasons else None
+
+    return {
+        "allowed": allowed,
+        "decision": decision,
+        "reason": reason,
+        "sanitized_payload": sanitized,
+        "safety_flags": safety_flags,
+    }
+
+
+def verify_v2_0_station_contracts(payload: Optional[Dict[str, Any]] = None, stations: Optional[Any] = None) -> Dict[str, Any]:
+    """Validate Antigravity v2.0.0 ecosystem station payload contracts across all 10 non-video stations (REQ-GS-202)."""
+    data = payload if payload is not None else (stations if isinstance(stations, dict) else {})
+    if not isinstance(data, dict):
+        return {
+            "valid": False,
+            "checked_stations": [],
+            "violations": ["Payload must be a dictionary"],
+        }
+
+    violations: List[str] = []
+    checked_stations: Set[str] = set()
+
+    # 1. iso9000_agentops
+    iso_data = data.get("iso9000_agentops") or data.get("iso9000-agentops")
+    if iso_data is not None:
+        checked_stations.add("iso9000_agentops")
+        if not isinstance(iso_data, dict):
+            violations.append("iso9000_agentops: station payload must be a dict")
+        else:
+            soa = iso_data.get("soa")
+            if soa is not None and isinstance(soa, dict):
+                count = soa.get("controls_implemented_count")
+                min_req = soa.get("mandatory_minimum", 20)
+                if count is None or not isinstance(count, int) or count < min_req or count < 20:
+                    violations.append(f"iso9000_agentops: ISO/IEC 42001 soa controls_implemented_count ({count}) must be >= {min_req}")
+            cert = iso_data.get("portfolio_certificate")
+            if cert is not None and isinstance(cert, dict):
+                cov = cert.get("mean_rtm_coverage")
+                if cov is not None and (not isinstance(cov, (int, float)) or cov < 0.0 or cov > 1.0):
+                    violations.append("iso9000_agentops: portfolio_certificate mean_rtm_coverage must be in [0.0, 1.0]")
+
+    # 2. agy_computer_use
+    cua_data = data.get("agy_computer_use") or data.get("agy-computer-use")
+    if cua_data is not None:
+        checked_stations.add("agy_computer_use")
+        if not isinstance(cua_data, dict):
+            violations.append("agy_computer_use: station payload must be a dict")
+        else:
+            anchor = cua_data.get("visual_anchor")
+            if anchor is not None and isinstance(anchor, dict):
+                score = anchor.get("match_score")
+                if score is not None and (not isinstance(score, (int, float)) or isinstance(score, bool) or score < 0.0 or score > 1.0):
+                    violations.append(f"agy_computer_use: visual_anchor match_score ({score}) must be in range [0.0, 1.0]")
+            traj = cua_data.get("recorded_trajectory")
+            if traj is not None and isinstance(traj, dict):
+                if "steps" in traj and not isinstance(traj["steps"], list):
+                    violations.append("agy_computer_use: recorded_trajectory steps must be a list")
+
+    # 3. agy_golden_stack
+    gs_data = data.get("agy_golden_stack") or data.get("agy-golden-stack")
+    if gs_data is not None:
+        checked_stations.add("agy_golden_stack")
+        if not isinstance(gs_data, dict):
+            violations.append("agy_golden_stack: station payload must be a dict")
+        else:
+            telemetry = gs_data.get("bus_telemetry")
+            if telemetry is not None and isinstance(telemetry, dict):
+                p95 = telemetry.get("sla_p95_ms")
+                max_p95 = telemetry.get("max_allowed_sla_p95_ms", 1.0)
+                if p95 is not None and (not isinstance(p95, (int, float)) or p95 > max_p95):
+                    violations.append(f"agy_golden_stack: bus_telemetry sla_p95_ms ({p95}) exceeds max allowed ({max_p95})")
+
+    # 4. agy_brain_memory
+    bm_data = data.get("agy_brain_memory") or data.get("agy-brain-memory")
+    if bm_data is not None:
+        checked_stations.add("agy_brain_memory")
+        if not isinstance(bm_data, dict):
+            violations.append("agy_brain_memory: station payload must be a dict")
+        else:
+            budget = bm_data.get("context_budget_allocation")
+            if budget is not None and isinstance(budget, dict):
+                alloc = budget.get("allocated_tokens")
+                max_b = budget.get("max_budget")
+                if alloc is not None and max_b is not None and alloc > max_b:
+                    violations.append(f"agy_brain_memory: context_budget_allocation allocated_tokens ({alloc}) exceeds max_budget ({max_b})")
+
+    # 5. agy_doctor_mux
+    dm_data = data.get("agy_doctor_mux") or data.get("agy-doctor-mux")
+    if dm_data is not None:
+        checked_stations.add("agy_doctor_mux")
+        if not isinstance(dm_data, dict):
+            violations.append("agy_doctor_mux: station payload must be a dict")
+        else:
+            matrix = dm_data.get("ecosystem_version_matrix")
+            if matrix is not None and isinstance(matrix, dict):
+                target_ver = matrix.get("target_version")
+                if target_ver != "2.0.0":
+                    violations.append(f"agy_doctor_mux: ecosystem_version_matrix target_version must be '2.0.0', got '{target_ver}'")
+
+    # 6. agy_lsrpc_bridge
+    lb_data = data.get("agy_lsrpc_bridge") or data.get("agy-lsrpc-bridge")
+    if lb_data is not None:
+        checked_stations.add("agy_lsrpc_bridge")
+        if not isinstance(lb_data, dict):
+            violations.append("agy_lsrpc_bridge: station payload must be a dict")
+        else:
+            coll = lb_data.get("cross_plugin_mcp_collisions")
+            if coll is not None and isinstance(coll, dict):
+                tokens = coll.get("fleet_estimated_tokens", 0)
+                budget_tok = coll.get("fleet_token_budget", 16000)
+                if coll.get("has_collisions") is True:
+                    violations.append("agy_lsrpc_bridge: cross_plugin_mcp_collisions detected collisions")
+                if coll.get("within_fleet_budget") is False or tokens > budget_tok:
+                    violations.append(f"agy_lsrpc_bridge: fleet_estimated_tokens ({tokens}) exceeds budget ({budget_tok})")
+
+    # 7. pe_reversing_lab
+    pe_data = data.get("pe_reversing_lab") or data.get("pe-reversing-lab")
+    if pe_data is not None:
+        checked_stations.add("pe_reversing_lab")
+        if not isinstance(pe_data, dict):
+            violations.append("pe_reversing_lab: station payload must be a dict")
+        else:
+            sec = pe_data.get("security_and_unwind")
+            if sec is not None and isinstance(sec, dict):
+                if "export_forwarders_count" in sec and sec["export_forwarders_count"] < 0:
+                    violations.append("pe_reversing_lab: export_forwarders_count must be non-negative")
+                if "pdata_unwind_records" in sec and sec["pdata_unwind_records"] < 0:
+                    violations.append("pe_reversing_lab: pdata_unwind_records must be non-negative")
+
+    # 8. eskd_vision_station
+    eskd_data = data.get("eskd_vision_station") or data.get("eskd-vision-station")
+    if eskd_data is not None:
+        checked_stations.add("eskd_vision_station")
+        if not isinstance(eskd_data, dict):
+            violations.append("eskd_vision_station: station payload must be a dict")
+        else:
+            dims = eskd_data.get("gost_2307_dimensions")
+            if dims is not None and isinstance(dims, dict):
+                if dims.get("valid") is False:
+                    violations.append("eskd_vision_station: gost_2307_dimensions is invalid")
+            scale = eskd_data.get("gost_2302_scale")
+            if scale is not None and isinstance(scale, dict):
+                if scale.get("standard_compliant") is False:
+                    violations.append("eskd_vision_station: gost_2302_scale is not standard compliant")
+
+    # 9. agy_secret_shield
+    ss_data = data.get("agy_secret_shield") or data.get("agy-secret-shield")
+    if ss_data is not None:
+        checked_stations.add("agy_secret_shield")
+        if not isinstance(ss_data, dict):
+            violations.append("agy_secret_shield: station payload must be a dict")
+        else:
+            sarif = ss_data.get("secret_scan_sarif")
+            if sarif is not None and isinstance(sarif, dict):
+                ver = sarif.get("version")
+                if ver != "2.1.0":
+                    violations.append(f"agy_secret_shield: secret_scan_sarif version must be '2.1.0', got '{ver}'")
+
+    # 10. agy_federation_mesh
+    fm_data = data.get("agy_federation_mesh") or data.get("agy-federation-mesh")
+    if fm_data is not None:
+        checked_stations.add("agy_federation_mesh")
+        if not isinstance(fm_data, dict):
+            violations.append("agy_federation_mesh: station payload must be a dict")
+        else:
+            quorum = fm_data.get("byzantine_quorum_consensus")
+            if quorum is not None and isinstance(quorum, dict):
+                if quorum.get("consensus_reached") is False:
+                    violations.append("agy_federation_mesh: byzantine quorum consensus not reached")
+            stealing = fm_data.get("work_stealing_scheduler")
+            if stealing is not None and isinstance(stealing, dict):
+                if stealing.get("deadlock_free") is False:
+                    violations.append("agy_federation_mesh: work_stealing_scheduler reported deadlock")
 
     return {
         "valid": len(violations) == 0,
@@ -735,6 +1018,17 @@ def slot_p30_iso9000_gate(
                 return {
                     "decision": "block",
                     "reason": "v1.3.0 Station contract violation: " + "; ".join(station_check_v13["violations"]),
+                }
+
+    station_check_v20 = verify_v2_0_station_contracts(payload)
+    if station_check_v20["checked_stations"]:
+        context["station_v2_0_contracts_verification"] = station_check_v20
+        if not station_check_v20["valid"]:
+            role = str(payload.get("role") or "").lower().strip()
+            if role in ("implementer", "build-agent", "station-agent") or bool(payload.get("enforce_station_contracts")):
+                return {
+                    "decision": "block",
+                    "reason": "v2.0.0 Station contract violation: " + "; ".join(station_check_v20["violations"]),
                 }
 
     return {"decision": "allow"}
@@ -875,6 +1169,24 @@ def slot_p50_oss_release_gate(
                 return {
                     "decision": "block",
                     "reason": "v1.3.0 Station contract violation in release gate: " + "; ".join(station_check_v13["violations"]),
+                }
+
+    station_check_v20 = verify_v2_0_station_contracts(payload)
+    if station_check_v20["checked_stations"]:
+        context["station_v2_0_contracts_release_verification"] = station_check_v20
+        if not station_check_v20["valid"]:
+            cmd = str(payload.get("command") or "").lower()
+            tool_name = str(payload.get("tool_name") or "").lower()
+            is_push_or_release = (
+                (tool_name == "run_command" and any(k in cmd for k in ("git push", "gh release", "git tag")))
+                or event_name in ("PrePush", "ReleaseAudit", "PreRelease")
+                or bool(payload.get("is_release"))
+                or bool(payload.get("enforce_station_contracts"))
+            )
+            if is_push_or_release:
+                return {
+                    "decision": "block",
+                    "reason": "v2.0.0 Station contract violation in release gate: " + "; ".join(station_check_v20["violations"]),
                 }
 
     if event_name == "PreToolUse":
