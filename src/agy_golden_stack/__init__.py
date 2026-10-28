@@ -14,12 +14,15 @@ from agy_golden_stack.slots import (
     verify_v1_2_station_contracts,
     verify_v1_3_station_contracts,
 )
+from agy_golden_stack.ub_mode_guard import UBModeCheckResult, UBModeGuard
 
 __version__ = "2.0.0"
 
 __all__ = [
     "GoldenStackBus",
     "SlotRegistration",
+    "UBModeCheckResult",
+    "UBModeGuard",
     "__version__",
     "audit_and_consolidate_plugin_hooks",
     "inspect_computer_use_bus_event",

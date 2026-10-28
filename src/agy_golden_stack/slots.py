@@ -944,6 +944,19 @@ def slot_p30_iso9000_gate(
     context: Dict[str, Any],
 ) -> Dict[str, Any]:
     """P30: Enforce Agile V Self-Grading Bias role separation and validate v1.2 station contracts."""
+    if payload.get("ub_mode_enforce") or payload.get("ub_mode_guard"):
+        from agy_golden_stack.ub_mode_guard import UBModeGuard
+
+        guard = payload.get("ub_mode_guard")
+        if not isinstance(guard, UBModeGuard):
+            guard = UBModeGuard()
+        eval_res = guard.evaluate_bus_hook(
+            {"event_name": event_name, "payload": payload, "context": context}
+        )
+        context["ub_mode_evaluation"] = eval_res
+        if eval_res.get("decision") == "block":
+            return eval_res
+
     if event_name == "PreToolUse":
         tool_name = str(payload.get("tool_name") or "").lower()
         role = str(payload.get("role") or "").lower().strip()
