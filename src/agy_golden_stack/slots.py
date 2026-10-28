@@ -766,7 +766,7 @@ def inspect_computer_use_bus_event(
 
 
 def verify_v2_0_station_contracts(payload: Optional[Dict[str, Any]] = None, stations: Optional[Any] = None) -> Dict[str, Any]:
-    """Validate Antigravity v2.0.0 ecosystem station payload contracts across all 10 non-video stations (REQ-GS-202)."""
+    """Validate Golden Stack v2.0.0 ecosystem station payload contracts across all 10 non-video stations (REQ-GS-202)."""
     data = payload if payload is not None else (stations if isinstance(stations, dict) else {})
     if not isinstance(data, dict):
         return {

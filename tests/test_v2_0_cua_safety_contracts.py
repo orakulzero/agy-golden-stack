@@ -1,4 +1,4 @@
-"""Tests for Antigravity v2.0.0 Computer-Use Visual Safety Interceptor (REQ-GS-201)
+"""Tests for Golden Stack v2.0.0 computer-use visual safety interceptor (REQ-GS-201)
 
 and 10-Station v2.0.0 Ecosystem Contract Verifier (REQ-GS-202).
 """

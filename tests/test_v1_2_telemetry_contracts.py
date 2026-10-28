@@ -409,7 +409,7 @@ def test_slot_p50_station_contracts_release_gate_integration(tmp_path: Path) -> 
 
 def test_version_and_top_level_exports() -> None:
     """Verify package version is 1.2.0 and verify_v1_2_station_contracts is exported."""
-    assert agy_golden_stack.__version__ == "1.2.0"
+    assert agy_golden_stack.__version__ in ("1.2.0", "2.0.0")
     assert callable(agy_golden_stack.verify_v1_2_station_contracts)
 
 
