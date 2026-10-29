@@ -9,6 +9,10 @@ from agy_golden_stack.bus import (
     verify_v2_0_station_contracts,
 )
 from agy_golden_stack.consolidator import audit_and_consolidate_plugin_hooks
+from agy_golden_stack.prompt_hook import (
+    UserPromptHookInspector,
+    UserPromptInspection,
+)
 from agy_golden_stack.slots import (
     inspect_computer_use_bus_event,
     verify_v1_2_station_contracts,
@@ -23,6 +27,8 @@ __all__ = [
     "SlotRegistration",
     "UBModeCheckResult",
     "UBModeGuard",
+    "UserPromptHookInspector",
+    "UserPromptInspection",
     "__version__",
     "audit_and_consolidate_plugin_hooks",
     "inspect_computer_use_bus_event",
