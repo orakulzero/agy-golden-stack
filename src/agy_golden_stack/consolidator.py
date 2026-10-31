@@ -9,13 +9,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Dict, List
+from typing import Any
 
 
 def audit_and_consolidate_plugin_hooks(
     config_root: Path,
     apply_changes: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Scan `<config_root>/plugins/*/hooks.json` for competing hook definitions.
     When `apply_changes=True`, creates `hooks.json.bak` backups and marks them
@@ -23,8 +23,8 @@ def audit_and_consolidate_plugin_hooks(
     """
     croot = Path(config_root).resolve()
     plugins_dir = croot / "plugins"
-    competing: List[str] = []
-    backups: List[str] = []
+    competing: list[str] = []
+    backups: list[str] = []
 
     if not plugins_dir.is_dir():
         return {
