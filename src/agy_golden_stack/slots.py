@@ -17,7 +17,7 @@ import math
 from pathlib import Path
 import re
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 try:
     from iso9000_agentops.diff_tour import (
@@ -42,12 +42,11 @@ except ImportError:
     from iso9000_agentops.diff_tour import (
         drop_revealing_asks,
         validate_diff_tour,
-        verify_git_reference,
     )
 
 MAX_SAFE_JS_INT = 9007199254740991
 
-ALLOWED_PLUGIN_KEYS: Set[str] = {
+ALLOWED_PLUGIN_KEYS: set[str] = {
     "name",
     "displayName",
     "description",
@@ -63,7 +62,7 @@ ALLOWED_PLUGIN_KEYS: Set[str] = {
 }
 
 
-def _default_forbidden_tokens() -> List[str]:
+def _default_forbidden_tokens() -> list[str]:
     return [
         "Ora" + "kul" + " " + "Grey",
         "Ora" + "kul",
@@ -77,11 +76,11 @@ def _has_cyrillic_char(text: str) -> bool:
 
 
 def verify_locked_test_hashes(
-    workspace_root: Path, locked_hashes: Dict[str, str]
-) -> Dict[str, Any]:
+    workspace_root: Path, locked_hashes: dict[str, str]
+) -> dict[str, Any]:
     """Verify SHA-256 digests of locked test files to prevent Self-Grading Bias tampering."""
     root = Path(workspace_root).resolve()
-    mismatches: List[Dict[str, str]] = []
+    mismatches: list[dict[str, str]] = []
     for rel_path, expected_sha in locked_hashes.items():
         fpath = root / rel_path
         if not fpath.is_file():
@@ -108,7 +107,7 @@ def verify_locked_test_hashes(
     }
 
 
-def _scan_bigints(obj: Any, prefix: str, out: Dict[str, str]) -> None:
+def _scan_bigints(obj: Any, prefix: str, out: dict[str, str]) -> None:
     if isinstance(obj, bool):
         return
     if isinstance(obj, int):
@@ -128,11 +127,11 @@ def _scan_bigints(obj: Any, prefix: str, out: Dict[str, str]) -> None:
 def slot_p10_runtime_doctor(
     workspace_root: Path,
     event_name: str,
-    payload: Dict[str, Any],
-    context: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
     """P10: Heal stale .git/index.lock, audit MCP <=64-char names, and coerce unsafe JS BigInts."""
-    healed_locks: List[str] = []
+    healed_locks: list[str] = []
     threshold = float(payload.get("stale_lock_threshold_sec", 120.0))
     force_heal = bool(payload.get("force_heal_locks", False))
 
@@ -148,14 +147,14 @@ def slot_p10_runtime_doctor(
     context["healed_git_locks"] = healed_locks
 
     mcp_tools = payload.get("mcp_tools") or []
-    violations: List[str] = []
+    violations: list[str] = []
     if isinstance(mcp_tools, list):
         for tname in mcp_tools:
             if isinstance(tname, str) and len(tname) > 64:
                 violations.append(tname)
     context["mcp_64char_violations"] = violations
 
-    coerced: Dict[str, str] = {}
+    coerced: dict[str, str] = {}
     _scan_bigints(payload, "", coerced)
     context["coerced_bigints"] = coerced
     return {"decision": "allow"}
@@ -164,9 +163,9 @@ def slot_p10_runtime_doctor(
 def slot_p20_brain_memory(
     workspace_root: Path,
     event_name: str,
-    payload: Dict[str, Any],
-    context: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
     """P20: Validate markdown `[Label](conversation://<id>)` links and detect bare links."""
     text = str(payload.get("prompt") or payload.get("message") or "")
     md_links = re.findall(r"\[[^\]]+\]\((conversation://[a-zA-Z0-9_-]+)\)", text)
@@ -180,7 +179,7 @@ def slot_p20_brain_memory(
     return {"decision": "allow"}
 
 
-def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
+def verify_v1_2_station_contracts(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate v1.2.0 peripheral station payload contracts.
 
     Supports:
@@ -196,8 +195,8 @@ def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             "violations": ["Payload must be a dictionary"],
         }
 
-    violations: List[str] = []
-    checked_stations: Set[str] = set()
+    violations: list[str] = []
+    checked_stations: set[str] = set()
 
     # 1. pe_reversing_lab
     stubs = payload.get("syscall_stubs")
@@ -451,12 +450,12 @@ def verify_v1_2_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "valid": len(violations) == 0,
-        "checked_stations": sorted(list(checked_stations)),
+        "checked_stations": sorted(checked_stations),
         "violations": violations,
     }
 
 
-def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
+def verify_v1_3_station_contracts(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate v1.3.0 peripheral station payload contracts.
 
     Supports:
@@ -475,8 +474,8 @@ def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
             "violations": ["Payload must be a dictionary"],
         }
 
-    violations: List[str] = []
-    checked_stations: Set[str] = set()
+    violations: list[str] = []
+    checked_stations: set[str] = set()
 
     # 1. pe_reversing_lab
     pe_data = None
@@ -662,16 +661,16 @@ def verify_v1_3_station_contracts(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "valid": len(violations) == 0,
-        "checked_stations": sorted(list(checked_stations)),
+        "checked_stations": sorted(checked_stations),
         "violations": violations,
     }
 
 
 def inspect_computer_use_bus_event(
     event_type: str,
-    payload: Dict[str, Any],
-    context: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Inspect computer-use action and event payloads for visual safety, bounds, and prompt injection (REQ-GS-201)."""
     if not isinstance(payload, dict):
         return {
@@ -682,12 +681,12 @@ def inspect_computer_use_bus_event(
             "sanitized_payload": None,
         }
 
-    safety_flags: List[str] = []
-    reasons: List[str] = []
+    safety_flags: list[str] = []
+    reasons: list[str] = []
     sanitized = copy.deepcopy(payload)
 
     # 1. Coordinate Boundary Enforcement
-    coords_to_check: List[Tuple[str, float]] = []
+    coords_to_check: list[tuple[str, float]] = []
     if "norm_x" in payload and isinstance(payload["norm_x"], (int, float)) and not isinstance(payload["norm_x"], bool):
         coords_to_check.append(("norm_x", float(payload["norm_x"])))
     if "norm_y" in payload and isinstance(payload["norm_y"], (int, float)) and not isinstance(payload["norm_y"], bool):
@@ -737,9 +736,9 @@ def inspect_computer_use_bus_event(
                     reasons.append("Zero-width hidden command detected")
                 return cleaned
             return obj
-        elif isinstance(obj, dict):
+        if isinstance(obj, dict):
             return {k: _scan_and_sanitize(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
+        if isinstance(obj, list):
             return [_scan_and_sanitize(item) for item in obj]
         return obj
 
@@ -765,7 +764,7 @@ def inspect_computer_use_bus_event(
     }
 
 
-def verify_v2_0_station_contracts(payload: Optional[Dict[str, Any]] = None, stations: Optional[Any] = None) -> Dict[str, Any]:
+def verify_v2_0_station_contracts(payload: dict[str, Any] | None = None, stations: Any | None = None) -> dict[str, Any]:
     """Validate Golden Stack v2.0.0 ecosystem station payload contracts across all 10 non-video stations (REQ-GS-202)."""
     data = payload if payload is not None else (stations if isinstance(stations, dict) else {})
     if not isinstance(data, dict):
@@ -775,8 +774,8 @@ def verify_v2_0_station_contracts(payload: Optional[Dict[str, Any]] = None, stat
             "violations": ["Payload must be a dictionary"],
         }
 
-    violations: List[str] = []
-    checked_stations: Set[str] = set()
+    violations: list[str] = []
+    checked_stations: set[str] = set()
 
     # 1. iso9000_agentops
     iso_data = data.get("iso9000_agentops") or data.get("iso9000-agentops")
@@ -932,7 +931,7 @@ def verify_v2_0_station_contracts(payload: Optional[Dict[str, Any]] = None, stat
 
     return {
         "valid": len(violations) == 0,
-        "checked_stations": sorted(list(checked_stations)),
+        "checked_stations": sorted(checked_stations),
         "violations": violations,
     }
 
@@ -940,9 +939,9 @@ def verify_v2_0_station_contracts(payload: Optional[Dict[str, Any]] = None, stat
 def slot_p30_iso9000_gate(
     workspace_root: Path,
     event_name: str,
-    payload: Dict[str, Any],
-    context: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
     """P30: Enforce Agile V Self-Grading Bias role separation and validate v1.2 station contracts."""
     if payload.get("ub_mode_enforce") or payload.get("ub_mode_guard"):
         from agy_golden_stack.ub_mode_guard import UBModeGuard
@@ -1047,8 +1046,8 @@ def slot_p30_iso9000_gate(
     return {"decision": "allow"}
 
 
-def _validate_single_plugin_dir(pdir: Path) -> Dict[str, Any]:
-    errors: List[str] = []
+def _validate_single_plugin_dir(pdir: Path) -> dict[str, Any]:
+    errors: list[str] = []
     manifest_file = pdir / "plugin.json"
     if not manifest_file.is_file():
         errors.append(f"Missing plugin.json in {pdir}")
@@ -1085,9 +1084,9 @@ def _validate_single_plugin_dir(pdir: Path) -> Dict[str, Any]:
 def slot_p40_lsrpc_plugin(
     workspace_root: Path,
     event_name: str,
-    payload: Dict[str, Any],
-    context: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
     """P40: Validate plugin bundle structure in-process."""
     explicit_dir = payload.get("plugin_dir")
     if explicit_dir:
@@ -1104,11 +1103,11 @@ def slot_p40_lsrpc_plugin(
 
 def audit_repository_5gates(
     workspace_root: Path,
-    forbidden_tokens: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    forbidden_tokens: list[str] | None = None,
+) -> dict[str, Any]:
     """Run 5-Gate Open-Source Release Audit on `workspace_root`."""
     root = Path(workspace_root).resolve()
-    errors: List[str] = []
+    errors: list[str] = []
     tokens = forbidden_tokens if forbidden_tokens is not None else _default_forbidden_tokens()
 
     lic_file = root / "LICENSE"
@@ -1144,9 +1143,9 @@ def audit_repository_5gates(
 def slot_p50_oss_release_gate(
     workspace_root: Path,
     event_name: str,
-    payload: Dict[str, Any],
-    context: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
     """P50: Intercept `git push` or `gh release create` and enforce 5-Gate OSS Release Audit and station contracts."""
     station_check = verify_v1_2_station_contracts(payload)
     if station_check["checked_stations"]:
@@ -1217,7 +1216,7 @@ def slot_p50_oss_release_gate(
                 }
 
             root = Path(workspace_root).resolve()
-            tour_files: List[Path] = []
+            tour_files: list[Path] = []
             for pat in ("*.tour.json", ".diff-tour/*.json"):
                 tour_files.extend(root.glob(pat))
             for tf in tour_files:
