@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,7 @@ class UBModeCheckResult:
 
     is_compliant: bool
     rule_name: str
-    violations: List[str] = field(default_factory=list)
+    violations: list[str] = field(default_factory=list)
 
 
 def _is_production_file(filepath: str) -> bool:
@@ -32,8 +32,8 @@ class UBModeGuard:
 
     def verify_tdd_sequence(
         self,
-        modified_files: List[str],
-        test_files: List[str],
+        modified_files: list[str],
+        test_files: list[str],
     ) -> UBModeCheckResult:
         """Verify Uncle Bob's TDD Rule 1: production files require tests.
 
@@ -68,7 +68,7 @@ class UBModeGuard:
                 violations=[f"Syntax error parsing source code: {exc}"],
             )
 
-        violations: List[str] = []
+        violations: list[str] = []
         classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
 
         for i in range(len(classes)):
@@ -136,7 +136,7 @@ class UBModeGuard:
             violations=[],
         )
 
-    def evaluate_bus_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def evaluate_bus_hook(self, context: dict[str, Any]) -> dict[str, Any]:
         """Evaluate hook execution in < 1.0ms, returning allow or block decision."""
         payload = context.get("payload") if isinstance(context.get("payload"), dict) else context
         if not isinstance(payload, dict):
