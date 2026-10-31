@@ -15,7 +15,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Any, List, Optional
+from typing import Any
 
 from agy_golden_stack.bus import GoldenStackBus
 from agy_golden_stack.consolidator import audit_and_consolidate_plugin_hooks
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     cmd = args.subcommand
@@ -95,7 +95,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         ws = Path(args.workspace_root) if args.workspace_root else Path.cwd()
         bus = GoldenStackBus(workspace_root=ws)
         iters = max(1, int(args.iterations))
-        durations: List[float] = []
+        durations: list[float] = []
         for _ in range(iters):
             r = bus.dispatch(
                 "PreToolUse",
