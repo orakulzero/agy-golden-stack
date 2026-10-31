@@ -10,7 +10,8 @@ import hashlib
 import json
 from pathlib import Path
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+from collections.abc import Callable
 
 from agy_golden_stack.slots import (
     inspect_computer_use_bus_event,
@@ -23,7 +24,7 @@ from agy_golden_stack.slots import (
     verify_v2_0_station_contracts,
 )
 
-SlotHandler = Callable[[str, Dict[str, Any], Dict[str, Any]], Dict[str, Any]]
+SlotHandler = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 
 
 @dataclass
@@ -39,8 +40,8 @@ class GoldenStackBus:
 
     def __init__(
         self,
-        workspace_root: Optional[Path] = None,
-        config_root: Optional[Path] = None,
+        workspace_root: Path | None = None,
+        config_root: Path | None = None,
         register_defaults: bool = True,
     ) -> None:
         self.workspace_root = Path(workspace_root or Path.cwd()).resolve()
@@ -49,12 +50,12 @@ class GoldenStackBus:
             if config_root
             else (Path.home() / ".gemini" / "config").resolve()
         )
-        self.slots: List[SlotRegistration] = []
+        self.slots: list[SlotRegistration] = []
         self._active_depth = 0
-        self._telemetry_timings: Dict[str, List[float]] = {}
-        self._telemetry_counts: Dict[str, Dict[str, int]] = {}
-        self._execution_window: List[Dict[str, Any]] = []
-        self._dispatched_events: List[bytes] = []
+        self._telemetry_timings: dict[str, list[float]] = {}
+        self._telemetry_counts: dict[str, dict[str, int]] = {}
+        self._execution_window: list[dict[str, Any]] = []
+        self._dispatched_events: list[bytes] = []
 
         if register_defaults:
             self._register_default_slots()
@@ -127,14 +128,14 @@ class GoldenStackBus:
     def dispatch(
         self,
         event_name: str,
-        payload: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Dispatch a lifecycle event through P10..P50 in-memory."""
         pl = dict(payload or {})
-        context: Dict[str, Any] = {}
-        executed_slots: List[str] = []
-        slot_timings_ms: Dict[str, float] = {}
-        slot_errors: Dict[str, str] = {}
+        context: dict[str, Any] = {}
+        executed_slots: list[str] = []
+        slot_timings_ms: dict[str, float] = {}
+        slot_errors: dict[str, str] = {}
 
         if self._active_depth > 0 or bool(pl.get("_golden_bus_active")):
             return {
@@ -235,9 +236,9 @@ class GoldenStackBus:
         finally:
             self._active_depth -= 1
 
-    def get_telemetry_summary(self) -> Dict[str, Dict[str, Any]]:
+    def get_telemetry_summary(self) -> dict[str, dict[str, Any]]:
         """Compute per-slot SLA telemetry summary including min, avg, p50, p95, max ms and counts."""
-        summary: Dict[str, Dict[str, Any]] = {}
+        summary: dict[str, dict[str, Any]] = {}
         for slot in self.slots:
             sid = slot.slot_id
             timings = self._telemetry_timings.get(sid, [])
@@ -278,8 +279,8 @@ class GoldenStackBus:
     def _record_dispatch(
         self,
         event_name: str,
-        payload: Dict[str, Any],
-        slot_errors: Dict[str, str],
+        payload: dict[str, Any],
+        slot_errors: dict[str, str],
     ) -> None:
         is_error = len(slot_errors) > 0
         self._execution_window.append({
@@ -296,10 +297,10 @@ class GoldenStackBus:
                 event_entry, sort_keys=True, separators=(",", ":"), default=str
             ).encode("utf-8")
         except Exception:
-            canonical_bytes = f"{event_name}:{str(payload)}".encode("utf-8")
+            canonical_bytes = f"{event_name}:{str(payload)}".encode()
         self._dispatched_events.append(canonical_bytes)
 
-    def get_circuit_breaker_health(self, window_size: int = 100) -> Dict[str, Any]:
+    def get_circuit_breaker_health(self, window_size: int = 100) -> dict[str, Any]:
         """Compute sliding-window circuit breaker health across recent dispatches."""
         window = self._execution_window[-window_size:] if window_size > 0 else self._execution_window
         total = len(window)
@@ -325,7 +326,7 @@ class GoldenStackBus:
             "window_size": window_size,
         }
 
-    def compute_bus_merkle_digest(self) -> Dict[str, Any]:
+    def compute_bus_merkle_digest(self) -> dict[str, Any]:
         """Compute deterministic RFC 6962 binary Merkle root over all dispatched events."""
         tree = _build_bus_merkle_tree(self._dispatched_events)
         return {
@@ -336,24 +337,24 @@ class GoldenStackBus:
         }
 
 
-def _build_bus_merkle_tree(leaf_payloads: List[bytes]) -> Dict[str, Any]:
+def _build_bus_merkle_tree(leaf_payloads: list[bytes]) -> dict[str, Any]:
     if not leaf_payloads:
         return {
             "root": "",
             "levels": [],
             "leaf_count": 0,
         }
-    current_level: List[str] = [
+    current_level: list[str] = [
         hashlib.sha256(b"\x00" + bytes(p)).hexdigest()
         for p in leaf_payloads
     ]
-    levels: List[List[str]] = [list(current_level)]
+    levels: list[list[str]] = [list(current_level)]
     while len(current_level) > 1:
         if len(current_level) % 2 == 1:
             paired = list(current_level) + [current_level[-1]]
         else:
             paired = current_level
-        next_level: List[str] = []
+        next_level: list[str] = []
         for i in range(0, len(paired), 2):
             left = bytes.fromhex(paired[i])
             right = bytes.fromhex(paired[i + 1])
@@ -368,7 +369,7 @@ def _build_bus_merkle_tree(leaf_payloads: List[bytes]) -> Dict[str, Any]:
     }
 
 
-def _compute_percentile(sorted_vals: List[float], p: float) -> float:
+def _compute_percentile(sorted_vals: list[float], p: float) -> float:
     if not sorted_vals:
         return 0.0
     if len(sorted_vals) == 1:
