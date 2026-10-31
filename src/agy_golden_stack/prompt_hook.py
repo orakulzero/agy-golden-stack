@@ -6,11 +6,13 @@ DPAPI tags and intelligent execution mode routing (fold_in_process vs spawn_suba
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import re
 import time
-from typing import Any, List, Mapping, Pattern
+from collections.abc import Mapping
+from dataclasses import dataclass
+from re import Pattern
+from typing import Any
 
 _CREDENTIAL_PATTERN: Pattern[str] = re.compile(
     r"(?:AIza[0-9A-Za-z_-]{15,}"
@@ -35,7 +37,7 @@ class UserPromptInspection:
     allowed: bool
     sanitized_message: str
     redacted_secrets_count: int
-    redacted_tags: List[str]
+    redacted_tags: list[str]
     recommended_execution_mode: str
     latency_ms: float
 
@@ -70,7 +72,7 @@ class UserPromptHookInspector:
                 estimated_lines = 0
 
         raw_prompt = str(raw_val) if raw_val else ""
-        redacted_tags: List[str] = []
+        redacted_tags: list[str] = []
 
         def _replace_match(match: re.Match[str]) -> str:
             secret = match.group(0)
