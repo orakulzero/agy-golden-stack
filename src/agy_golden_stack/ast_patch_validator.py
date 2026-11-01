@@ -10,10 +10,10 @@ Hygiene: 100% English-only (0 Cyrillic characters).
 from __future__ import annotations
 
 import ast
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 
-def find_ast_symbol_boundary(source_code: str, symbol_name: str) -> Tuple[int, int, str]:
+def find_ast_symbol_boundary(source_code: str, symbol_name: str) -> tuple[int, int, str]:
     """Extract 1-indexed (start_line, end_line, symbol_type) of named function or class (REQ-GS-PATCH-01)."""
     tree = ast.parse(source_code)
     for node in ast.walk(tree):
@@ -38,8 +38,8 @@ def apply_range_edit_slice(
     return prefix + replacement_content + suffix
 
 
-def _extract_imported_symbols(tree: ast.AST) -> Set[str]:
-    imported: Set[str] = set()
+def _extract_imported_symbols(tree: ast.AST) -> set[str]:
+    imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -54,7 +54,7 @@ def _extract_imported_symbols(tree: ast.AST) -> Set[str]:
     return imported
 
 
-def validate_additive_imports(original_code: str, modified_code: str) -> Dict[str, Any]:
+def validate_additive_imports(original_code: str, modified_code: str) -> dict[str, Any]:
     """Ensure modified code does not delete or truncate existing import statements (REQ-GS-PATCH-01)."""
     try:
         orig_tree = ast.parse(original_code)
@@ -65,7 +65,7 @@ def validate_additive_imports(original_code: str, modified_code: str) -> Dict[st
     orig_imports = _extract_imported_symbols(orig_tree)
     mod_imports = _extract_imported_symbols(mod_tree)
 
-    missing = sorted(list(orig_imports - mod_imports))
+    missing = sorted(orig_imports - mod_imports)
     if missing:
         return {
             "is_valid": False,
@@ -83,7 +83,7 @@ def validate_ast_surgical_patch(
     original_code: str,
     modified_code: str,
     target_symbol: str | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Validate syntax and additive imports across original and modified AST (REQ-GS-PATCH-01)."""
     try:
         ast.parse(modified_code)
@@ -103,7 +103,7 @@ def validate_ast_surgical_patch(
     return {"is_valid": True, "reason": "AST surgical patch validated"}
 
 
-def check_ast_boundaries_before_refactor(source_code: str, symbol_name: str) -> Dict[str, Any]:
+def check_ast_boundaries_before_refactor(source_code: str, symbol_name: str) -> dict[str, Any]:
     """Pre-refactor verification ensuring target symbol has identifiable AST boundary (REQ-GS-PATCH-01)."""
     try:
         s, e, st = find_ast_symbol_boundary(source_code, symbol_name)
@@ -120,7 +120,7 @@ class ASTPatchValidator:
     """Surgical patch and boundary validator enforcing AST integrity on files >180 lines (REQ-GS-PATCH-01)."""
 
     @staticmethod
-    def find_boundary(source_code: str, symbol_name: str) -> Tuple[int, int, str]:
+    def find_boundary(source_code: str, symbol_name: str) -> tuple[int, int, str]:
         return find_ast_symbol_boundary(source_code, symbol_name)
 
     @staticmethod
@@ -128,9 +128,9 @@ class ASTPatchValidator:
         return apply_range_edit_slice(original_code, start, end, replacement)
 
     @staticmethod
-    def validate_patch(original: str, modified: str, symbol: str | None = None) -> Dict[str, Any]:
+    def validate_patch(original: str, modified: str, symbol: str | None = None) -> dict[str, Any]:
         return validate_ast_surgical_patch(original, modified, target_symbol=symbol)
 
     @staticmethod
-    def validate_imports(original: str, modified: str) -> Dict[str, Any]:
+    def validate_imports(original: str, modified: str) -> dict[str, Any]:
         return validate_additive_imports(original, modified)
