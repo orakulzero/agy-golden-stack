@@ -10,7 +10,7 @@ Hygiene: 100% English-only (0 Cyrillic characters).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 from agy_golden_stack.slots import verify_locked_test_hashes
 
 
@@ -18,7 +18,7 @@ def validate_role_path_permissions(
     role: str,
     target_path: str,
     tool_name: str = "write_file",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Validate Agile V role-path separation boundaries (REQ-GS-TDD-01)."""
     norm_role = str(role or "").lower().strip()
     norm_path = str(target_path or "").replace("\\", "/").lstrip("./")
@@ -59,14 +59,14 @@ def validate_role_path_permissions(
 
 def evaluate_tdd_precommit_gate(
     workspace_root: Path | str,
-    payload: Dict[str, Any],
-) -> Dict[str, Any]:
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     """Pre-commit evaluation requiring locked test hashes for staged implementation files (REQ-GS-TDD-01)."""
     root = Path(workspace_root).resolve()
-    staged_files: List[str] = payload.get("staged_files", [])
-    locked_hashes: Dict[str, str] = payload.get("locked_test_hashes", {})
+    staged_files: list[str] = payload.get("staged_files", [])
+    locked_hashes: dict[str, str] = payload.get("locked_test_hashes", {})
 
-    staged_impl_files: List[str] = []
+    staged_impl_files: list[str] = []
     for f in staged_files:
         norm = str(f).replace("\\", "/").lstrip("./")
         parts = [p.lower() for p in norm.split("/") if p]
@@ -106,11 +106,11 @@ class TDDGate:
     def __init__(self, workspace_root: Path | str) -> None:
         self.workspace_root = Path(workspace_root).resolve()
 
-    def validate_permissions(self, role: str, target_path: str, tool_name: str = "write_file") -> Dict[str, Any]:
+    def validate_permissions(self, role: str, target_path: str, tool_name: str = "write_file") -> dict[str, Any]:
         return validate_role_path_permissions(role, target_path, tool_name=tool_name)
 
-    def verify_hashes(self, locked_hashes: Dict[str, str]) -> Dict[str, Any]:
+    def verify_hashes(self, locked_hashes: dict[str, str]) -> dict[str, Any]:
         return verify_locked_test_hashes(self.workspace_root, locked_hashes)
 
-    def evaluate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def evaluate(self, payload: dict[str, Any]) -> dict[str, Any]:
         return evaluate_tdd_precommit_gate(self.workspace_root, payload)
