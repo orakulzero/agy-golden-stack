@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from agy_golden_stack.agentic_handoff import (
+    AgenticHandoffProtocol,
+    HandoffEnvelope,
+)
 from agy_golden_stack.bus import (
     GoldenStackBus,
     SlotRegistration,
@@ -23,7 +27,9 @@ from agy_golden_stack.ub_mode_guard import UBModeCheckResult, UBModeGuard
 __version__ = "2.0.0"
 
 __all__ = [
+    "AgenticHandoffProtocol",
     "GoldenStackBus",
+    "HandoffEnvelope",
     "SlotRegistration",
     "UBModeCheckResult",
     "UBModeGuard",
