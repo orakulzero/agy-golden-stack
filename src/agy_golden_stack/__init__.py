@@ -23,6 +23,10 @@ from agy_golden_stack.slots import (
     verify_v1_3_station_contracts,
 )
 from agy_golden_stack.ub_mode_guard import UBModeCheckResult, UBModeGuard
+from agy_golden_stack.superagent_mandate_guard import (
+    SuperagentMandateGuard,
+    WorkerMandate,
+)
 
 __version__ = "2.0.0"
 
@@ -31,10 +35,12 @@ __all__ = [
     "GoldenStackBus",
     "HandoffEnvelope",
     "SlotRegistration",
+    "SuperagentMandateGuard",
     "UBModeCheckResult",
     "UBModeGuard",
     "UserPromptHookInspector",
     "UserPromptInspection",
+    "WorkerMandate",
     "__version__",
     "audit_and_consolidate_plugin_hooks",
     "inspect_computer_use_bus_event",
