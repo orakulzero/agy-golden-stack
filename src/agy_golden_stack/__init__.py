@@ -27,6 +27,10 @@ from agy_golden_stack.superagent_mandate_guard import (
     SuperagentMandateGuard,
     WorkerMandate,
 )
+from agy_golden_stack.cross_ide_ast_delta_verifier import (
+    ASTDeltaVerificationReport,
+    CrossIDEASTDeltaVerifier,
+)
 
 __version__ = "2.0.0"
 
