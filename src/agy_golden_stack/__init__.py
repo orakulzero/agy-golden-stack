@@ -31,13 +31,17 @@ from agy_golden_stack.cross_ide_ast_delta_verifier import (
     ASTDeltaVerificationReport,
     CrossIDEASTDeltaVerifier,
 )
+from agy_golden_stack.self_healing_gatekeeper import SelfHealingGatekeeper
 
 __version__ = "2.0.0"
 
 __all__ = [
+    "ASTDeltaVerificationReport",
     "AgenticHandoffProtocol",
+    "CrossIDEASTDeltaVerifier",
     "GoldenStackBus",
     "HandoffEnvelope",
+    "SelfHealingGatekeeper",
     "SlotRegistration",
     "SuperagentMandateGuard",
     "UBModeCheckResult",
