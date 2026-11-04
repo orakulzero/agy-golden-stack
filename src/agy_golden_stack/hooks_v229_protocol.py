@@ -1,14 +1,18 @@
-"""AGY v2.29.0 Hooks PreToolUse overwrite, termination, finished_reason, and Script Jail protocol (REQ-GS-V229-01, REQ-GS-V229-02)."""
+"""AGY v2.29.0 Hooks PreToolUse overwrite, termination, finished_reason, and Script Jail protocol (REQ-GS-V229-01, REQ-GS-V229-02, REQ-GS-V229-03)."""
 
 from __future__ import annotations
 
 import re
+import sys
 import uuid
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 REQUIREMENT_ID = "REQ-GS-V229-01"
 REQUIREMENT_ID_V229_02 = "REQ-GS-V229-02"
+REQUIREMENT_ID_V229_03 = "REQ-GS-V229-03"
+DEFAULT_REMOTE_CONTAINER_HOME = Path("/home/" + "anti" + "gravity")
 MAX_SCRIPT_JAIL_TIMEOUT_MS = 30000
 MAX_SCRIPT_JAIL_RSS_KB = 1048576
 SCRIPT_JAIL_PROXY_RULES = "http://127.0.0.1:9"
@@ -137,6 +141,41 @@ def parse_cli_json_finished_reason(payload: Mapping[str, Any]) -> dict[str, Any]
         "is_partial": is_partial,
         "should_retry": should_retry,
     }
+
+
+def is_remote_linux_container(
+    env_root: Path | str | None = None,
+    platform_name: str | None = None,
+) -> bool:
+    """Detect whether execution is inside the remote Linux container environment (REQ-GS-V229-03)."""
+    eff_platform = str(platform_name if platform_name is not None else sys.platform).lower()
+    if eff_platform.startswith("linux"):
+        return True
+    target_path = Path(env_root) if env_root is not None else DEFAULT_REMOTE_CONTAINER_HOME
+    return target_path.exists()
+
+
+def build_quota_guarded_pre_invocation(
+    weekly_burn_fraction: float,
+    priority: str = "P3_BACKGROUND_24X7",
+    inbox_changed: bool = True,
+) -> dict[str, Any]:
+    """Return PreInvocation termination when idle or weekly quota reserve is reached (REQ-GS-V229-03)."""
+    burn = float(weekly_burn_fraction)
+    if priority != "P1_INTERACTIVE":
+        if not inbox_changed:
+            return build_pre_invocation_termination(
+                "No new Drive inbox jobs; skipping background poll with zero token burn.",
+                system_message="REQ-GS-V229-03 idle poll short-circuit",
+            )
+        if burn >= 0.80:
+            return build_pre_invocation_termination(
+                "Weekly remote quota reached 80% reserve ceiling; background job deferred.",
+                system_message="REQ-GS-V229-03 20% interactive reserve guard",
+            )
+    return build_zero_token_user_markdown_step(
+        f"**Quota Pacer OK**: priority=`{priority}`, burn=`{burn:.0%}`"
+    )
 
 
 class HooksV229Protocol:

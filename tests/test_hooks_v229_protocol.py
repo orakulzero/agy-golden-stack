@@ -1,7 +1,8 @@
-"""Locked Agile V verification suite for AGY v2.29.0 hooks and script-jail protocol (REQ-GS-V229-01, REQ-GS-V229-02)."""
+"""Locked Agile V verification suite for AGY v2.29.0 hooks and script-jail protocol (REQ-GS-V229-01, REQ-GS-V229-02, REQ-GS-V229-03)."""
 
 from __future__ import annotations
 
+from pathlib import Path
 import pytest
 
 import agy_golden_stack
@@ -10,7 +11,9 @@ from agy_golden_stack.hooks_v229_protocol import (
     auto_harden_run_command_args,
     build_pre_invocation_termination,
     build_pre_tool_use_overwrite_response,
+    build_quota_guarded_pre_invocation,
     build_zero_token_user_markdown_step,
+    is_remote_linux_container,
     parse_cli_json_finished_reason,
     validate_script_jail_request,
 )
@@ -20,10 +23,7 @@ def test_req_gs_v229_01_pre_tool_use_overwrite_and_auto_unbuffered_python() -> N
     """Verify REQ-GS-V229-01 PreToolUse overwrite protocol and auto-unbuffered python -u rewrite."""
     assert getattr(agy_golden_stack, "__v3_generation__", None) == "3.0.0"
     assert agy_golden_stack.HooksV229Protocol is HooksV229Protocol
-    assert (
-        agy_golden_stack.build_pre_tool_use_overwrite_response
-        is build_pre_tool_use_overwrite_response
-    )
+    assert agy_golden_stack.build_pre_tool_use_overwrite_response is build_pre_tool_use_overwrite_response
     assert agy_golden_stack.auto_harden_run_command_args is auto_harden_run_command_args
 
     resp = build_pre_tool_use_overwrite_response(
@@ -51,10 +51,7 @@ def test_req_gs_v229_01_pre_tool_use_overwrite_and_auto_unbuffered_python() -> N
 
 def test_req_gs_v229_01_zero_token_user_markdown_and_script_jail_policy() -> None:
     """Verify REQ-GS-V229-01 zero-token user_markdown metadata and Script Jail policy validation."""
-    assert (
-        agy_golden_stack.build_zero_token_user_markdown_step
-        is build_zero_token_user_markdown_step
-    )
+    assert agy_golden_stack.build_zero_token_user_markdown_step is build_zero_token_user_markdown_step
     assert agy_golden_stack.validate_script_jail_request is validate_script_jail_request
 
     step = build_zero_token_user_markdown_step("## Status\nAll green", model_system_message="")
@@ -76,24 +73,18 @@ def test_req_gs_v229_01_zero_token_user_markdown_and_script_jail_policy() -> Non
     assert jail["valid"] is True
 
     protocol = HooksV229Protocol()
-    wrapped_overwrite = protocol.pre_tool_use_overwrite(
+    assert protocol.pre_tool_use_overwrite(
         decision="allow",
         overwrite={"CommandLine": "python -u app.py"},
         reason="Enforce unbuffered I/O",
-    )
-    assert wrapped_overwrite["overwrite"] == {"CommandLine": "python -u app.py"}
-
-    wrapped_harden = protocol.harden_tool_call(
+    )["overwrite"] == {"CommandLine": "python -u app.py"}
+    assert protocol.harden_tool_call(
         {"name": "run_command", "args": {"CommandLine": "python script.py"}}
-    )
-    assert wrapped_harden["overwrite"] == {"CommandLine": "python -u script.py"}
-
-    wrapped_step = protocol.zero_token_markdown("## Status\nAll green")
+    )["overwrite"] == {"CommandLine": "python -u script.py"}
     assert (
-        wrapped_step["systemMessage"]["metadata"]["user_markdown"]
+        protocol.zero_token_markdown("## Status\nAll green")["systemMessage"]["metadata"]["user_markdown"]
         == "## Status\nAll green"
     )
-
     wrapped_jail = protocol.validate_jail(
         "550e8400-e29b-41d4-a716-446655440000",
         timeout_ms=45000,
@@ -105,30 +96,20 @@ def test_req_gs_v229_01_zero_token_user_markdown_and_script_jail_policy() -> Non
 
 def test_req_gs_v229_02_termination_and_finished_reason() -> None:
     """Verify REQ-GS-V229-02 PreInvocation termination and CLI JSON finished_reason parsing."""
-    assert (
-        agy_golden_stack.build_pre_invocation_termination
-        is build_pre_invocation_termination
-    )
-    assert (
-        agy_golden_stack.parse_cli_json_finished_reason
-        is parse_cli_json_finished_reason
-    )
+    assert agy_golden_stack.build_pre_invocation_termination is build_pre_invocation_termination
+    assert agy_golden_stack.parse_cli_json_finished_reason is parse_cli_json_finished_reason
 
-    term_basic = build_pre_invocation_termination("Blocked by policy")
-    assert term_basic == {
+    assert build_pre_invocation_termination("Blocked by policy") == {
         "terminationBehavior": "terminate",
         "errorMessage": {"userMessage": "Blocked by policy"},
     }
-
-    term_sys = build_pre_invocation_termination("Blocked by policy", system_message="Gate P30 deny")
-    assert term_sys == {
+    assert build_pre_invocation_termination("Blocked by policy", system_message="Gate P30 deny") == {
         "terminationBehavior": "terminate",
         "errorMessage": {
             "userMessage": "Blocked by policy",
             "systemMessage": "Gate P30 deny",
         },
     }
-
     with pytest.raises(ValueError):
         build_pre_invocation_termination("   ")
 
@@ -158,3 +139,35 @@ def test_req_gs_v229_02_termination_and_finished_reason() -> None:
     }
     with pytest.raises(ValueError):
         parse_cli_json_finished_reason({"finished_reason": "unknown_reason"})
+
+
+def test_req_gs_v229_03_remote_linux_container_and_quota_guard(tmp_path: Path) -> None:
+    """Verify REQ-GS-V229-03 remote Linux container detection and quota-guarded PreInvocation."""
+    assert agy_golden_stack.is_remote_linux_container is is_remote_linux_container
+    assert agy_golden_stack.build_quota_guarded_pre_invocation is build_quota_guarded_pre_invocation
+
+    marker = tmp_path / "container_marker"
+    assert is_remote_linux_container(env_root=marker, platform_name="win32") is False
+    assert is_remote_linux_container(env_root=marker, platform_name="linux") is True
+    marker.write_text("1", encoding="utf-8")
+    assert is_remote_linux_container(env_root=marker, platform_name="win32") is True
+
+    idle_term = build_quota_guarded_pre_invocation(
+        weekly_burn_fraction=0.25, priority="P3_BACKGROUND_24X7", inbox_changed=False
+    )
+    assert idle_term["terminationBehavior"] == "terminate"
+
+    quota_term = build_quota_guarded_pre_invocation(
+        weekly_burn_fraction=0.85, priority="P2_BATCH", inbox_changed=True
+    )
+    assert quota_term["terminationBehavior"] == "terminate"
+
+    ok_bg = build_quota_guarded_pre_invocation(
+        weekly_burn_fraction=0.50, priority="P3_BACKGROUND_24X7", inbox_changed=True
+    )
+    assert "systemMessage" in ok_bg and "terminationBehavior" not in ok_bg
+
+    ok_p1 = build_quota_guarded_pre_invocation(
+        weekly_burn_fraction=0.92, priority="P1_INTERACTIVE", inbox_changed=False
+    )
+    assert "systemMessage" in ok_p1 and "terminationBehavior" not in ok_p1
