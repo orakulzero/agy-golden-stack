@@ -31,9 +31,17 @@ from agy_golden_stack.cross_ide_ast_delta_verifier import (
     ASTDeltaVerificationReport,
     CrossIDEASTDeltaVerifier,
 )
+from agy_golden_stack.hooks_v229_protocol import (
+    HooksV229Protocol,
+    auto_harden_run_command_args,
+    build_pre_tool_use_overwrite_response,
+    build_zero_token_user_markdown_step,
+    validate_script_jail_request,
+)
 from agy_golden_stack.self_healing_gatekeeper import SelfHealingGatekeeper
 
 __version__ = "2.0.0"
+__v3_generation__ = "3.0.0"
 
 __all__ = [
     "ASTDeltaVerificationReport",
@@ -41,6 +49,7 @@ __all__ = [
     "CrossIDEASTDeltaVerifier",
     "GoldenStackBus",
     "HandoffEnvelope",
+    "HooksV229Protocol",
     "SelfHealingGatekeeper",
     "SlotRegistration",
     "SuperagentMandateGuard",
@@ -49,9 +58,14 @@ __all__ = [
     "UserPromptHookInspector",
     "UserPromptInspection",
     "WorkerMandate",
+    "__v3_generation__",
     "__version__",
     "audit_and_consolidate_plugin_hooks",
+    "auto_harden_run_command_args",
+    "build_pre_tool_use_overwrite_response",
+    "build_zero_token_user_markdown_step",
     "inspect_computer_use_bus_event",
+    "validate_script_jail_request",
     "verify_locked_test_hashes",
     "verify_v1_2_station_contracts",
     "verify_v1_3_station_contracts",
