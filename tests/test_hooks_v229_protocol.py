@@ -1,4 +1,4 @@
-"""Locked Agile V verification suite for Antigravity v2.29.0 Hooks & Script Jail protocol (REQ-GS-V229-01)."""
+"""Locked Agile V verification suite for AGY v2.29.0 hooks and script-jail protocol (REQ-GS-V229-01)."""
 
 from __future__ import annotations
 
