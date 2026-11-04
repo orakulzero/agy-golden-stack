@@ -1,4 +1,4 @@
-"""AGY v2.29.0 Hooks PreToolUse overwrite, zero-token user_markdown, and Script Jail protocol (REQ-GS-V229-01)."""
+"""AGY v2.29.0 Hooks PreToolUse overwrite, termination, finished_reason, and Script Jail protocol (REQ-GS-V229-01, REQ-GS-V229-02)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,17 @@ from collections.abc import Mapping
 from typing import Any
 
 REQUIREMENT_ID = "REQ-GS-V229-01"
+REQUIREMENT_ID_V229_02 = "REQ-GS-V229-02"
 MAX_SCRIPT_JAIL_TIMEOUT_MS = 30000
 MAX_SCRIPT_JAIL_RSS_KB = 1048576
 SCRIPT_JAIL_PROXY_RULES = "http://127.0.0.1:9"
 SCRIPT_JAIL_PROXY_BYPASS_RULES = "<-loopback>"
+
+_FINISHED_REASON_MAP: dict[str, tuple[bool, bool]] = {
+    "print_timeout": (True, True),
+    "interrupted": (True, False),
+    "error": (False, True),
+}
 
 _UNBUFFERED_PYTHON_RE = re.compile(r"\b(python(?:3(?:\.\d+)?)?)\b(?!\s+-u\b)")
 
@@ -92,6 +99,43 @@ def validate_script_jail_request(
         "proxy_rules": SCRIPT_JAIL_PROXY_RULES,
         "proxy_bypass_rules": SCRIPT_JAIL_PROXY_BYPASS_RULES,
         "valid": bool(valid_uuid and rss_ok),
+    }
+
+
+def build_pre_invocation_termination(
+    user_message: str,
+    system_message: str | None = None,
+) -> dict[str, Any]:
+    """Build a PreInvocation hook termination response (REQ-GS-V229-02)."""
+    if not isinstance(user_message, str) or not user_message.strip():
+        raise ValueError("user_message must be a non-empty string.")
+    error_payload: dict[str, str] = {"userMessage": user_message}
+    if system_message is not None and str(system_message).strip():
+        error_payload["systemMessage"] = str(system_message)
+    return {
+        "terminationBehavior": "terminate",
+        "errorMessage": error_payload,
+    }
+
+
+def parse_cli_json_finished_reason(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Parse AGY CLI --output-format json finished_reason diagnostics (REQ-GS-V229-02)."""
+    reason = payload.get("finished_reason")
+    if reason is None:
+        return {
+            "completed_normally": True,
+            "finished_reason": None,
+            "is_partial": False,
+            "should_retry": False,
+        }
+    if not isinstance(reason, str) or reason not in _FINISHED_REASON_MAP:
+        raise ValueError(f"Unsupported finished_reason: {reason!r}")
+    is_partial, should_retry = _FINISHED_REASON_MAP[reason]
+    return {
+        "completed_normally": False,
+        "finished_reason": reason,
+        "is_partial": is_partial,
+        "should_retry": should_retry,
     }
 
 

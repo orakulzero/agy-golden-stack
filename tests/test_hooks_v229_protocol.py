@@ -1,13 +1,17 @@
-"""Locked Agile V verification suite for AGY v2.29.0 hooks and script-jail protocol (REQ-GS-V229-01)."""
+"""Locked Agile V verification suite for AGY v2.29.0 hooks and script-jail protocol (REQ-GS-V229-01, REQ-GS-V229-02)."""
 
 from __future__ import annotations
+
+import pytest
 
 import agy_golden_stack
 from agy_golden_stack.hooks_v229_protocol import (
     HooksV229Protocol,
     auto_harden_run_command_args,
+    build_pre_invocation_termination,
     build_pre_tool_use_overwrite_response,
     build_zero_token_user_markdown_step,
+    parse_cli_json_finished_reason,
     validate_script_jail_request,
 )
 
@@ -97,3 +101,60 @@ def test_req_gs_v229_01_zero_token_user_markdown_and_script_jail_policy() -> Non
     )
     assert wrapped_jail["resolved_timeout_ms"] == 30000
     assert wrapped_jail["valid"] is True
+
+
+def test_req_gs_v229_02_termination_and_finished_reason() -> None:
+    """Verify REQ-GS-V229-02 PreInvocation termination and CLI JSON finished_reason parsing."""
+    assert (
+        agy_golden_stack.build_pre_invocation_termination
+        is build_pre_invocation_termination
+    )
+    assert (
+        agy_golden_stack.parse_cli_json_finished_reason
+        is parse_cli_json_finished_reason
+    )
+
+    term_basic = build_pre_invocation_termination("Blocked by policy")
+    assert term_basic == {
+        "terminationBehavior": "terminate",
+        "errorMessage": {"userMessage": "Blocked by policy"},
+    }
+
+    term_sys = build_pre_invocation_termination("Blocked by policy", system_message="Gate P30 deny")
+    assert term_sys == {
+        "terminationBehavior": "terminate",
+        "errorMessage": {
+            "userMessage": "Blocked by policy",
+            "systemMessage": "Gate P30 deny",
+        },
+    }
+
+    with pytest.raises(ValueError):
+        build_pre_invocation_termination("   ")
+
+    assert parse_cli_json_finished_reason({"response": "ok"}) == {
+        "completed_normally": True,
+        "finished_reason": None,
+        "is_partial": False,
+        "should_retry": False,
+    }
+    assert parse_cli_json_finished_reason({"finished_reason": "print_timeout"}) == {
+        "completed_normally": False,
+        "finished_reason": "print_timeout",
+        "is_partial": True,
+        "should_retry": True,
+    }
+    assert parse_cli_json_finished_reason({"finished_reason": "interrupted"}) == {
+        "completed_normally": False,
+        "finished_reason": "interrupted",
+        "is_partial": True,
+        "should_retry": False,
+    }
+    assert parse_cli_json_finished_reason({"finished_reason": "error"}) == {
+        "completed_normally": False,
+        "finished_reason": "error",
+        "is_partial": False,
+        "should_retry": True,
+    }
+    with pytest.raises(ValueError):
+        parse_cli_json_finished_reason({"finished_reason": "unknown_reason"})
