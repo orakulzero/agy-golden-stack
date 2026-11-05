@@ -13,7 +13,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 import re
-from typing import Any, Dict, List, Set
+from typing import Any
 
 REQ_TAG_PATTERN = re.compile(r"REQ-[A-Z0-9-]+")
 
@@ -23,11 +23,11 @@ class ASTDeltaVerificationReport:
     """Structured report of AST equivalence and contract invariants across a refactoring delta (REQ-GS-DELTAVERIFY-01)."""
 
     passed: bool
-    dropped_symbols: List[str] = field(default_factory=list)
-    dropped_decorators: List[str] = field(default_factory=list)
-    dropped_req_tags: List[str] = field(default_factory=list)
-    dropped_return_annotations: List[str] = field(default_factory=list)
-    complexity_violations: List[str] = field(default_factory=list)
+    dropped_symbols: list[str] = field(default_factory=list)
+    dropped_decorators: list[str] = field(default_factory=list)
+    dropped_req_tags: list[str] = field(default_factory=list)
+    dropped_return_annotations: list[str] = field(default_factory=list)
+    complexity_violations: list[str] = field(default_factory=list)
     complexity_delta: int = 0
 
 
@@ -55,10 +55,10 @@ class CrossIDEASTDeltaVerifier:
         return 1 + sum(1 for child in ast.walk(node) if isinstance(child, branch_types))
 
     @classmethod
-    def _extract_symbol_metadata(cls, source_code: str) -> Dict[str, Dict[str, Any]]:
+    def _extract_symbol_metadata(cls, source_code: str) -> dict[str, dict[str, Any]]:
         """Extract public symbols, their decorators, return annotations, and complexity."""
         tree = ast.parse(source_code)
-        symbols: Dict[str, Dict[str, Any]] = {}
+        symbols: dict[str, dict[str, Any]] = {}
 
         for node in tree.body:
             if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
@@ -84,7 +84,7 @@ class CrossIDEASTDeltaVerifier:
         return symbols
 
     @staticmethod
-    def _extract_req_tags(source_code: str) -> Set[str]:
+    def _extract_req_tags(source_code: str) -> set[str]:
         """Extract all REQ-* identifiers from module and symbol docstrings/source."""
         return set(REQ_TAG_PATTERN.findall(source_code))
 
@@ -97,10 +97,10 @@ class CrossIDEASTDeltaVerifier:
         base_syms = self._extract_symbol_metadata(baseline_source)
         cand_syms = self._extract_symbol_metadata(candidate_source)
 
-        dropped_symbols: List[str] = []
-        dropped_decorators: List[str] = []
-        dropped_return_annotations: List[str] = []
-        complexity_violations: List[str] = []
+        dropped_symbols: list[str] = []
+        dropped_decorators: list[str] = []
+        dropped_return_annotations: list[str] = []
+        complexity_violations: list[str] = []
         max_delta = 0
 
         for sym_name, base_meta in base_syms.items():
@@ -148,7 +148,7 @@ class CrossIDEASTDeltaVerifier:
         baseline_source: str,
         candidate_a: str,
         candidate_b: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate two refactoring candidates and return the compliant one with lower complexity delta (REQ-GS-DELTAVERIFY-01)."""
         rep_a = self.verify_ast_delta(baseline_source, candidate_a)
         rep_b = self.verify_ast_delta(baseline_source, candidate_b)
